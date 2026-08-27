@@ -29,7 +29,7 @@ class TestExitCodesAndStreams:
         assert proc.returncode == 0
         assert proc.stderr == ""
         payload = json.loads(proc.stdout)
-        assert set(payload) == {"summary", "resources"}
+        assert set(payload) == {"summary", "resources", "cost"}
 
     def test_cli_error_one_line_stderr_empty_stdout_exit_2(self, tmp_path):
         missing = str(tmp_path / "absent.json")

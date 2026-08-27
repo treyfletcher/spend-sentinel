@@ -2,38 +2,51 @@
   "format_version": "1.2",
   "resource_changes": [
     {
-      "address": "aws_instance.a",
+      "address": "aws_lambda_function.fn",
       "mode": "managed",
-      "type": "aws_instance",
-      "name": "a",
+      "type": "aws_lambda_function",
+      "name": "fn",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "change": {
         "actions": [
-          "no-op"
+          "create"
         ],
-        "before": {
-          "x": 1
-        },
+        "before": null,
         "after": {
-          "x": 1
+          "function_name": "fn",
+          "memory_size": 128
         }
       }
     },
     {
-      "address": "aws_s3_bucket.b",
+      "address": "aws_instance.exotic",
       "mode": "managed",
-      "type": "aws_s3_bucket",
-      "name": "b",
+      "type": "aws_instance",
+      "name": "exotic",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "change": {
         "actions": [
-          "no-op"
+          "create"
         ],
-        "before": {
-          "y": 2
-        },
+        "before": null,
         "after": {
-          "y": 2
+          "instance_type": "t9.mega-nonexistent"
+        }
+      }
+    },
+    {
+      "address": "aws_instance.priced",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "priced",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "instance_type": "t3.micro"
         }
       }
     }

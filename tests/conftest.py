@@ -16,6 +16,29 @@ from click.testing import CliRunner
 
 FIXTURES = Path(__file__).parent / "fixtures" / "plans"
 
+SNAPSHOT_PATH = (
+    Path(__file__).parent.parent / "spend_sentinel" / "data" / "pricing_snapshot.json"
+)
+
+
+def load_snapshot() -> dict[str, Any]:
+    """The bundled pricing snapshot, parsed fresh (expected values are computed
+    FROM this file, never hardcoded)."""
+    return json.loads(SNAPSHOT_PATH.read_text(encoding="utf-8"))
+
+
+def aws_provider_config(region: str) -> dict[str, Any]:
+    """A plan ``configuration`` block with a constant AWS provider region (R8)."""
+    return {
+        "provider_config": {
+            "aws": {
+                "name": "aws",
+                "full_name": "registry.terraform.io/hashicorp/aws",
+                "expressions": {"region": {"constant_value": region}},
+            }
+        }
+    }
+
 
 def fixture_path(name: str) -> str:
     """Absolute path of a committed fixture plan."""
@@ -27,13 +50,17 @@ def fixture_path(name: str) -> str:
 def make_plan(
     resource_changes: list[dict[str, Any]],
     format_version: str = "1.2",
+    provider_region: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
-    """Build a minimal plan JSON object."""
+    """Build a minimal plan JSON object; ``provider_region`` adds a constant
+    AWS provider region to the ``configuration`` block (R8)."""
     plan: dict[str, Any] = {
         "format_version": format_version,
         "resource_changes": resource_changes,
     }
+    if provider_region is not None:
+        plan["configuration"] = aws_provider_config(provider_region)
     plan.update(extra)
     return plan
 
@@ -73,8 +100,8 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
-def run_analyze(runner: CliRunner, plan_path: str):  # click Result (untyped)
-    """Invoke `spend-sentinel analyze --plan <path>` through CliRunner."""
+def run_analyze(runner: CliRunner, plan_path: str, *extra_args: str):  # click Result
+    """Invoke `spend-sentinel analyze --plan <path> [extra args]` through CliRunner."""
     from spend_sentinel.cli import main
 
-    return runner.invoke(main, ["analyze", "--plan", plan_path])
+    return runner.invoke(main, ["analyze", "--plan", plan_path, *extra_args])

@@ -162,7 +162,7 @@ class TestCliR3:
     def test_r3_cli_read_data_source_excluded(self, runner, tmp_path):
         """A-i1: a plan of only data-source reads is a valid no-change plan."""
         entry = make_change(address="data.aws_ami.x", type_="aws_ami", actions=["read"])
-        path = write_plan(tmp_path, make_plan([entry]))
+        path = write_plan(tmp_path, make_plan([entry], provider_region="us-east-1"))
         result = run_analyze(runner, path)
         assert result.exit_code == 0
         payload = json.loads(result.stdout)

@@ -109,13 +109,9 @@ class TestFailClosedNoTraceback:
         proc = run_cli_subprocess("analyze", "--plan", path, timeout=30)
         assert proc.returncode != 0  # never accepted
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG-1 (see docs/test-reports/feature-spend-sentinel-v1-increment1.md): "
-        "deeply nested JSON raises uncaught RecursionError -> traceback and exit 1, "
-        "violating R2/security fail-closed (exit 2, one-line stderr, no traceback)",
-    )
     def test_deeply_nested_json_fails_closed_exit_2(self, tmp_path):
+        """BUG-1 (increment-1 report) fixed in b39ee7f: deep nesting now maps
+        to the R2 contract."""
         path = deeply_nested_plan(tmp_path / "deep.json")
         proc = run_cli_subprocess("analyze", "--plan", path, timeout=30)
         assert proc.returncode == 2
@@ -128,7 +124,7 @@ class TestFailClosedNoTraceback:
             make_change(address=f"aws_instance.x{i}", actions=["create"])
             for i in range(2000)
         ]
-        path = write_plan(tmp_path, make_plan(changes))
+        path = write_plan(tmp_path, make_plan(changes, provider_region="us-east-1"))
         proc = run_cli_subprocess("analyze", "--plan", path)
         assert proc.returncode == 0
         assert json.loads(proc.stdout)["summary"]["created"] == 2000

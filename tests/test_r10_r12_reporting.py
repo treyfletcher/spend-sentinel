@@ -225,6 +225,13 @@ class TestErrorsR12Cli:
         assert payload["drift"]["status"] == "ran"
         assert [e["address"] for e in payload["drift"]["errors"]] == ["aws_instance.bad"]
         assert "AuthFailure" in payload["drift"]["errors"][0]["error"]
+        # a one-line stderr notice explains the exit 2 without echoing
+        # attacker-influenced addresses or error text
+        lines = [ln for ln in result.stderr.splitlines() if ln.strip()]
+        assert len(lines) == 1
+        assert "drift" in lines[0]
+        assert "aws_instance.bad" not in lines[0]
+        assert "AuthFailure" not in lines[0]
 
     def test_r12_cli_error_plus_clean_drift_still_exit_2(
         self, runner, monkeypatch, tmp_path, plan_path

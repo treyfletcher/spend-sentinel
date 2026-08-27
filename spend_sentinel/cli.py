@@ -171,8 +171,14 @@ def analyze(
     # R12: AWS read errors surface as exit 2 after the report is produced.
     # (The R18 rule that a policy BLOCK's exit 1 takes precedence over this 2
     # lands with the verdict logic in a later increment; no policy rules exist
-    # yet, so there is nothing to outrank.)
+    # yet, so there is nothing to outrank.) The stderr notice carries only a
+    # count — never resource addresses or error text (attacker-influenced).
     if drift.status is DriftStatus.RAN and drift.errors:
+        click.echo(
+            f"spend-sentinel: error: {len(drift.errors)} resource(s) could not be "
+            "read during drift detection (see drift.errors in the report)",
+            err=True,
+        )
         sys.exit(2)
 
 

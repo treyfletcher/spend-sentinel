@@ -15,7 +15,7 @@ import pytest
 
 from spend_sentinel.core.cost import HOURS_PER_MONTH, estimate
 from spend_sentinel.core.plan import load_plan
-from spend_sentinel.pricing.snapshot import SnapshotPricingSource
+from spend_sentinel.pricing.snapshot import SnapshotError, SnapshotPricingSource
 
 from .conftest import fixture_path, load_snapshot, make_change, make_plan, write_plan
 
@@ -212,6 +212,39 @@ class TestSnapshotIntegrity:
         assert pricing.get_rate("mars-north-1", "aws_instance", "t3.micro") is None
         assert pricing.get_rate("us-east-1", "aws_fake_service", "t3.micro") is None
         assert pricing.get_rate("us-east-1", "aws_instance", "t9.mega") is None
+
+
+class TestSnapshotLoaderFailsClosed:
+    """The loader itself fails closed on a malformed snapshot (packaging-bug
+    surface); the ``data`` constructor parameter exists for exactly this."""
+
+    def test_missing_meta_raises_snapshot_error(self):
+        with pytest.raises(SnapshotError):
+            SnapshotPricingSource(data={"regions": {}})
+
+    def test_wrong_shaped_regions_raises_snapshot_error(self):
+        data = {
+            "meta": {"version": "t", "snapshot_date": "d", "sources": ["s"]},
+            "regions": {"us-east-1": {"aws_instance": "not-a-table"}},
+        }
+        with pytest.raises(SnapshotError):
+            SnapshotPricingSource(data=data)
+
+    def test_non_decimal_rate_raises_snapshot_error(self):
+        data = {
+            "meta": {"version": "t", "snapshot_date": "d", "sources": ["s"]},
+            "regions": {"us-east-1": {"aws_instance": {"t3.micro": "not-a-rate"}}},
+        }
+        with pytest.raises(SnapshotError):
+            SnapshotPricingSource(data=data)
+
+    def test_snapshot_error_does_not_echo_values(self):
+        """SnapshotError diagnostics reach stderr via the CLI; they must not
+        echo snapshot content (same posture as R2 diagnostics)."""
+        marker = "CANARY-VALUE-93af"
+        with pytest.raises(SnapshotError) as excinfo:
+            SnapshotPricingSource(data={"meta": {"version": marker}, "regions": {}})
+        assert marker not in str(excinfo.value)
 
 
 class TestPricingThroughCli:

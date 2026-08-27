@@ -160,3 +160,29 @@ def summarize_plan(plan: Plan) -> tuple[PlanSummary, list[ClassifiedChange]]:
         replaced=counts[ActionClass.REPLACE],
     )
     return summary, classified
+
+
+def resolve_plan_region(plan: Plan) -> str | None:
+    """Extract a constant AWS provider region from the plan's configuration (R8).
+
+    Pure function. Returns the first constant ``region`` found among the AWS
+    provider configurations (spec assumption A1: single-region plans; the first
+    constant wins; ``--region`` overrides at the CLI). Returns ``None`` when no
+    AWS provider carries a constant region — the caller must then require
+    ``--region``.
+    """
+    configuration = plan.configuration
+    if configuration is None or configuration.provider_config is None:
+        return None
+    for key in sorted(configuration.provider_config):
+        pc = configuration.provider_config[key]
+        is_aws = pc.name == "aws" or key == "aws" or key.startswith("aws.")
+        if not is_aws or pc.expressions is None:
+            continue
+        region_expr = pc.expressions.get("region")
+        if not isinstance(region_expr, dict):
+            continue
+        constant = region_expr.get("constant_value")
+        if isinstance(constant, str) and constant:
+            return constant
+    return None

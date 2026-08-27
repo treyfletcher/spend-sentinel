@@ -48,6 +48,16 @@ increment-1 CLI-level tests fail on this branch because their fixtures have no
 unit tests still pass (70 passed). The fixtures/tests need a region for
 increment 2; I did not touch them — tests are the tester's surface.
 
+## Bug fix riding this branch
+
+- **BUG-1 (tester report, medium)**: deeply nested plan JSON no longer escapes
+  as an uncaught `RecursionError` (traceback, exit 1) — `load_plan` maps
+  `RecursionError` from both `json.loads` and pydantic validation to the R2
+  contract: exit 2, one-line stderr "plan JSON is too deeply nested" naming
+  the file, no traceback, no content echo. Verified with 100k-deep nested
+  arrays at top level and inside `resource_changes`; the tester's strict-xfail
+  repro now XPASSes (marker removal is the tester's).
+
 ## Assumptions
 
 - **A-i7 (provider defaults)**: where the AWS provider documents a default for

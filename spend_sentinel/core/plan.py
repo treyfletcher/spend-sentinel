@@ -76,6 +76,10 @@ def load_plan(path: str | Path) -> Plan:
         data = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise PlanError("plan file is not valid JSON") from None
+    except RecursionError:
+        # BUG-1: CPython's JSON parser raises RecursionError on hostile,
+        # deeply nested input; map it to the R2 contract (exit 2, one line).
+        raise PlanError("plan JSON is too deeply nested") from None
 
     if not isinstance(data, dict):
         raise PlanError("plan JSON is not an object")
@@ -88,6 +92,8 @@ def load_plan(path: str | Path) -> Plan:
         plan = Plan.model_validate(data)
     except ValidationError as exc:
         raise PlanError(_describe_validation_error(exc)) from None
+    except RecursionError:
+        raise PlanError("plan JSON is too deeply nested") from None
 
     fv = plan.format_version
     if fv != "1" and not fv.startswith("1."):

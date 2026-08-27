@@ -221,14 +221,9 @@ class TestHostileNumericValues:
         )
 
     @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity", "1e400"])
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG-2 (see docs/test-reports/feature-spend-sentinel-v1-increment2.md): "
-        "non-finite JSON numbers (NaN/Infinity/1e400) in size attributes escape as an "
-        "uncaught decimal.InvalidOperation -> traceback, exit 1, violating the "
-        "fail-closed security requirement",
-    )
     def test_r7_nonfinite_size_fails_closed(self, tmp_path, literal):
+        """BUG-2 (fixed): non-finite JSON numbers in size attributes fail closed
+        as attributes_unknown — visibly unpriced, never a traceback."""
         payload = (
             '{"format_version":"1.2","resource_changes":[{"address":"aws_ebs_volume.x",'
             '"mode":"managed","type":"aws_ebs_volume","name":"x","provider_name":"aws",'
@@ -239,14 +234,22 @@ class TestHostileNumericValues:
         p.write_text(payload)
         proc = self.run_cli(str(p))
         assert "Traceback" not in proc.stderr
-        if proc.returncode == 0:
-            # acceptable fail-closed outcome: visibly unpriced
-            out = json.loads(proc.stdout)
-            assert [u["reason"] for u in out["cost"]["unpriced"]] == ["attributes_unknown"]
-        else:
-            # acceptable fail-closed outcome: R2-style one-line exit 2
-            assert proc.returncode == 2
-            assert len([ln for ln in proc.stderr.splitlines() if ln.strip()]) == 1
+        assert proc.returncode == 0
+        out = json.loads(proc.stdout)
+        assert [u["reason"] for u in out["cost"]["unpriced"]] == ["attributes_unknown"]
+        assert out["cost"]["breakdown"] == []
+        assert out["cost"]["monthly_delta_usd"] == "0.00"
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+    def test_r7_nonfinite_allocated_storage_is_attributes_unknown(self, pricing, bad):
+        """BUG-2 also covered allocated_storage (tester report); pin it at the
+        core level."""
+        assert unpriced_reason(
+            pricing,
+            type_="aws_db_instance",
+            after={"engine": "postgres", "instance_class": "db.t3.micro",
+                   "allocated_storage": bad},
+        ) == UnpricedReason.ATTRIBUTES_UNKNOWN
 
     @pytest.mark.xfail(
         strict=True,

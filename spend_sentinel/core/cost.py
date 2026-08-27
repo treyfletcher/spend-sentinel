@@ -173,11 +173,21 @@ def _optional_str(attrs: dict[str, Any], key: str, default: str) -> str:
 
 
 def _require_number(attrs: dict[str, Any], key: str) -> Decimal:
-    """A pricing-relevant numeric attribute (GB sizes); unknown/invalid fails closed."""
+    """A pricing-relevant numeric attribute (GB sizes); unknown/invalid fails closed.
+
+    Non-finite values need an explicit check (BUG-2): Python's ``json.loads``
+    accepts ``NaN``/``Infinity``/``-Infinity`` and overflows ``1e400`` to
+    ``inf``, and ``Decimal(str(...))`` constructs NaN/Infinity *successfully* —
+    the InvalidOperation only fires later, at ``quantize`` in :func:`estimate`,
+    escaping the fail-closed contract as a traceback.
+    """
     value = attrs.get(key)
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise _Unpriced(UnpricedReason.ATTRIBUTES_UNKNOWN)
     try:
-        return Decimal(str(value))
-    except InvalidOperation:  # e.g. inf/nan floats
+        number = Decimal(str(value))
+    except InvalidOperation:
         raise _Unpriced(UnpricedReason.ATTRIBUTES_UNKNOWN) from None
+    if not number.is_finite():
+        raise _Unpriced(UnpricedReason.ATTRIBUTES_UNKNOWN)
+    return number

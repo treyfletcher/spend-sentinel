@@ -1,6 +1,6 @@
 # Spec: spend-sentinel v1 — Terraform drift & cost sentinel
 
-Status: DRAFT
+Status: APPROVED — incremental delivery: R1–R3 (plan ingestion) first; remaining requirements gated on owner review of the first increment
 Branch: feature/spend-sentinel-v1
 
 ## Summary

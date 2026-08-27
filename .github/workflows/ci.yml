@@ -1,0 +1,12 @@
+# Placeholder CI workflow (T1). The real pipeline (ruff, mypy, pytest on 3.11/3.12
+# with AWS env vars scrubbed per R21) lands with T10 in a later increment.
+name: ci
+
+on:
+  workflow_dispatch:
+
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "CI placeholder — full pipeline arrives with T10"

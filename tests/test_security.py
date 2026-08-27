@@ -128,3 +128,35 @@ class TestFailClosedNoTraceback:
         proc = run_cli_subprocess("analyze", "--plan", path)
         assert proc.returncode == 0
         assert json.loads(proc.stdout)["summary"]["created"] == 2000
+
+
+class TestDiagnosticLineInjection:
+    """Plan-derived strings echoed in diagnostics (addresses, provider_config
+    keys, a plan-constant region — the A-i5 identifiers) are attacker-influenced
+    in a PR context. Control characters in them must not break R2's one-line
+    stderr contract or spoof extra 'spend-sentinel: error:' lines."""
+
+    SPOOF = "\nspend-sentinel: error: SPOOFED LINE"
+
+    @staticmethod
+    def assert_one_sanitized_line(result):
+        assert result.exit_code == 2
+        assert result.stdout == ""
+        lines = result.stderr.splitlines()
+        assert len([ln for ln in lines if ln.strip()]) == 1
+        assert not any(ln.startswith("spend-sentinel: error: SPOOFED") for ln in lines)
+
+    def test_newline_in_address_cannot_spoof_diagnostic(self, runner, tmp_path):
+        entry = make_change(address=f"aws_instance.x{self.SPOOF}", actions=["explode"])
+        path = write_plan(tmp_path, make_plan([entry]))
+        self.assert_one_sanitized_line(run_analyze(runner, path))
+
+    def test_newline_in_provider_config_key_cannot_spoof_diagnostic(self, runner, tmp_path):
+        plan = make_plan([])
+        plan["configuration"] = {"provider_config": {f"evil{self.SPOOF}": {"name": 42}}}
+        path = write_plan(tmp_path, plan)
+        self.assert_one_sanitized_line(run_analyze(runner, path))
+
+    def test_newline_in_plan_region_cannot_spoof_diagnostic(self, runner, tmp_path):
+        path = write_plan(tmp_path, make_plan([], provider_region=f"eu{self.SPOOF}"))
+        self.assert_one_sanitized_line(run_analyze(runner, path))

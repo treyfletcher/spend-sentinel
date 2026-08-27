@@ -29,8 +29,16 @@ from spend_sentinel.pricing.snapshot import SnapshotError, SnapshotPricingSource
 
 
 def _fail(message: str) -> NoReturn:
-    """One-line diagnostic on stderr, exit 2 (R2/R8). Never echoes file contents."""
-    click.echo(f"spend-sentinel: error: {message}", err=True)
+    """One-line diagnostic on stderr, exit 2 (R2/R8). Never echoes file contents.
+
+    Plan-derived identifiers (resource addresses, provider_config keys, a
+    plan-constant region) can reach diagnostics per A-i5 and are
+    attacker-influenced in a PR context; control characters are replaced with
+    spaces so a crafted plan cannot break R2's one-line contract or spoof
+    additional diagnostic lines on stderr.
+    """
+    sanitized = "".join(ch if ch.isprintable() else " " for ch in message)
+    click.echo(f"spend-sentinel: error: {sanitized}", err=True)
     sys.exit(2)
 
 

@@ -4,7 +4,11 @@ Increment 1 (R1-R3): ``spend-sentinel analyze --plan <path>`` loads and
 classifies a Terraform plan and prints a minimal JSON summary to stdout.
 Increment 2 (R4-R8) adds ``--region`` and a ``cost`` section (monthly delta,
 per-resource breakdown, unpriced list) priced from the bundled snapshot.
-Exit codes: 0 on success, 2 on ingestion/region errors (R2, R8) with a one-line
+Increment 3 (R9-R12) adds ``--state``/``--skip-drift`` and a ``drift`` section;
+the live boto3 adapter is imported only when drift will actually run (R11/R21).
+Exit codes: 0 on success, 2 on ingestion/region errors (R2, R8) and on AWS
+read errors during drift (R12; the "exit 1 beats 2" precedence lands with the
+R18 verdict logic, since policy rules do not exist yet), with a one-line
 stderr diagnostic — no traceback, no file contents. The full verdict structure
 (R19) arrives in a later increment.
 """
@@ -19,12 +23,15 @@ import click
 
 from spend_sentinel import __version__
 from spend_sentinel.core.cost import estimate
+from spend_sentinel.core.drift import AwsReader, detect, skipped_report
+from spend_sentinel.core.models import DriftReport, DriftStatus
 from spend_sentinel.core.plan import (
     PlanError,
     load_plan,
     resolve_plan_region,
     summarize_plan,
 )
+from spend_sentinel.core.state import load_state
 from spend_sentinel.pricing.snapshot import SnapshotError, SnapshotPricingSource
 
 
@@ -63,7 +70,26 @@ def main() -> None:
     type=str,
     help="Pricing region (overrides the region in the plan's provider configuration).",
 )
-def analyze(plan_path: str, region_flag: str | None) -> None:
+@click.option(
+    "--state",
+    "state_path",
+    default=None,
+    type=str,
+    help="Path to a Terraform state JSON file (output of `terraform show -json`) "
+    "to check for drift against live AWS.",
+)
+@click.option(
+    "--skip-drift",
+    is_flag=True,
+    default=False,
+    help="Skip drift detection even when --state is given; no AWS call is made.",
+)
+def analyze(
+    plan_path: str,
+    region_flag: str | None,
+    state_path: str | None,
+    skip_drift: bool,
+) -> None:
     """Analyze a Terraform plan: classify changes and estimate the monthly cost delta."""
     try:
         plan = load_plan(plan_path)
@@ -87,6 +113,18 @@ def analyze(plan_path: str, region_flag: str | None) -> None:
         _fail(f"region '{region}' is not in the pricing snapshot (supported: {supported})")
 
     cost = estimate(plan, pricing, region)
+
+    # Drift (R9-R12). R11: with --skip-drift or no --state, no AwsReader call
+    # path is exercised and the boto3 adapter module is never imported.
+    if skip_drift or state_path is None:
+        drift = skipped_report()
+    else:
+        try:
+            state = load_state(state_path)
+        except PlanError as exc:
+            _fail(f"{state_path}: {exc}")
+        reader = _make_live_reader(region)
+        drift = detect(state, reader)
 
     output: dict[str, Any] = {
         "summary": {
@@ -126,8 +164,47 @@ def analyze(plan_path: str, region_flag: str | None) -> None:
                 for entry in cost.unpriced
             ],
         },
+        "drift": _drift_section(drift),
     }
     click.echo(json.dumps(output, indent=2))
+
+    # R12: AWS read errors surface as exit 2 after the report is produced.
+    # (The R18 rule that a policy BLOCK's exit 1 takes precedence over this 2
+    # lands with the verdict logic in a later increment; no policy rules exist
+    # yet, so there is nothing to outrank.)
+    if drift.status is DriftStatus.RAN and drift.errors:
+        sys.exit(2)
+
+
+def _make_live_reader(region: str) -> AwsReader:
+    """Wire the boto3 adapter; imported only here and only when drift runs (R21)."""
+    from spend_sentinel.adapters.boto3_reader import Boto3AwsReader, Boto3NotInstalledError
+
+    try:
+        return Boto3AwsReader(region=region)
+    except Boto3NotInstalledError as exc:
+        _fail(str(exc))
+
+
+def _drift_section(drift: DriftReport) -> dict[str, Any]:
+    """The JSON `drift` section (pre-R19 shape: status, drifts, skipped, errors)."""
+    return {
+        "status": drift.status.value,
+        "drifts": [
+            {
+                "address": d.address,
+                "kind": d.kind.value,
+                "attribute": d.attribute,
+                "state_value": d.state_value,
+                "live_value": d.live_value,
+            }
+            for d in drift.drifts
+        ],
+        "skipped": [
+            {"address": s.address, "type": s.type, "reason": s.reason} for s in drift.skipped
+        ],
+        "errors": [{"address": e.address, "error": e.error} for e in drift.errors],
+    }
 
 
 if __name__ == "__main__":

@@ -136,3 +136,145 @@ class CostReport(BaseModel):
     monthly_delta_usd: Decimal
     breakdown: tuple[CostLine, ...]
     unpriced: tuple[UnpricedResource, ...]
+
+
+# --- State ingestion (R9): subset of `terraform show -json` on the state ---
+
+
+class StateResource(BaseModel):
+    """One resource instance in the state's ``values`` tree."""
+
+    model_config = ConfigDict(extra="ignore", strict=False)
+
+    address: str
+    mode: str = "managed"
+    type: str
+    values: dict[str, Any] | None = None
+    sensitive_values: Any = None
+
+
+class StateModule(BaseModel):
+    """A module node: its resources plus child modules (recursive)."""
+
+    model_config = ConfigDict(extra="ignore", strict=False)
+
+    resources: list[StateResource] = Field(default_factory=list)
+    child_modules: list[StateModule] = Field(default_factory=list)
+
+
+class StateValues(BaseModel):
+    """The state's ``values`` block — only ``root_module`` is consumed."""
+
+    model_config = ConfigDict(extra="ignore", strict=False)
+
+    root_module: StateModule | None = None
+
+
+class State(BaseModel):
+    """A parsed Terraform state (the subset consumed for drift detection)."""
+
+    model_config = ConfigDict(extra="ignore", strict=False)
+
+    format_version: str
+    values: StateValues | None = None
+
+
+# --- Live AWS attribute models (returned by AwsReader implementations, R9) ---
+
+
+class InstanceAttrs(BaseModel):
+    """Live EC2 instance attributes in the R9 allowlist."""
+
+    model_config = ConfigDict(frozen=True)
+
+    instance_type: str
+    tags: dict[str, str] = Field(default_factory=dict)
+
+
+class SecurityGroupRule(BaseModel):
+    """One security-group rule, normalized for order-insensitive comparison."""
+
+    model_config = ConfigDict(frozen=True)
+
+    protocol: str
+    from_port: int | None = None
+    to_port: int | None = None
+    cidr_blocks: tuple[str, ...] = ()
+    ipv6_cidr_blocks: tuple[str, ...] = ()
+
+
+class SecurityGroupAttrs(BaseModel):
+    """Live security-group rule sets in the R9 allowlist."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ingress: tuple[SecurityGroupRule, ...] = ()
+    egress: tuple[SecurityGroupRule, ...] = ()
+
+
+class BucketAttrs(BaseModel):
+    """Live S3 bucket attributes in the R9 allowlist."""
+
+    model_config = ConfigDict(frozen=True)
+
+    tags: dict[str, str] = Field(default_factory=dict)
+    versioning_enabled: bool = False
+
+
+# --- Drift results (R10-R12) ---
+
+
+class DriftKind(StrEnum):
+    """How a resource drifted (R10)."""
+
+    CHANGED = "changed"
+    MISSING = "missing"
+
+
+class DriftStatus(StrEnum):
+    """Whether drift detection ran (R11)."""
+
+    RAN = "ran"
+    SKIPPED = "skipped"
+
+
+class Drift(BaseModel):
+    """One detected drift: address, attribute path, state vs live value (R10)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    address: str
+    kind: DriftKind
+    attribute: str | None = None
+    state_value: Any = None
+    live_value: Any = None
+
+
+class DriftSkipped(BaseModel):
+    """A state resource drift detection did not evaluate (R10)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    address: str
+    type: str
+    reason: str
+
+
+class DriftError(BaseModel):
+    """A per-resource AWS read failure that did not kill the run (R12)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    address: str
+    error: str
+
+
+class DriftReport(BaseModel):
+    """The drift detector's result (R9-R12)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: DriftStatus
+    drifts: tuple[Drift, ...] = ()
+    skipped: tuple[DriftSkipped, ...] = ()
+    errors: tuple[DriftError, ...] = ()

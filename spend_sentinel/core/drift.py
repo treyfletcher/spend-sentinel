@@ -236,11 +236,24 @@ def _atomic_rules(rules: Any) -> set[tuple[str, int | None, int | None, str, str
 
 
 def _render_rules(rules: set[tuple[str, int | None, int | None, str, str]]) -> list[str]:
-    """Deterministic, JSON-friendly rendering of an atomic rule set."""
+    """Deterministic, JSON-friendly rendering of an atomic rule set (A-i19).
+
+    The sort key covers the FULL atomic tuple (BUG-4: omitting ``to_port``
+    let rules tying on the other fields fall back to hash-seed-dependent set
+    iteration order, breaking cross-process determinism); ``None`` ports sort
+    before numeric ones.
+    """
     return [
         f"{protocol}:{from_port}-{to_port}:{cidr}"
         for protocol, from_port, to_port, _family, cidr in sorted(
-            rules, key=lambda r: (r[0], r[1] if r[1] is not None else -1, r[3], r[4])
+            rules,
+            key=lambda r: (
+                r[0],
+                -1 if r[1] is None else r[1],
+                -1 if r[2] is None else r[2],
+                r[3],
+                r[4],
+            ),
         )
     ]
 

@@ -4,8 +4,9 @@ and R12 (per-resource AWS read failures never kill the run; exit code 2).
 CLI-level R12 tests inject a FixtureAwsReader by monkeypatching the CLI's
 reader factory — the only seam the wiring exposes without boto3.
 
-Includes the BUG-4 xfail (rule-set rendering nondeterminism across processes);
-see docs/test-reports/feature-spend-sentinel-v1-increment3.md.
+BUG-4 (rule-set rendering nondeterminism across processes,
+docs/test-reports/feature-spend-sentinel-v1-increment3.md) was fixed in review;
+its former xfail now runs as a regular regression test.
 """
 
 from __future__ import annotations
@@ -264,13 +265,6 @@ class TestErrorsR12Cli:
 
 
 class TestRuleRenderingDeterminism:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG-4 (see docs/test-reports/feature-spend-sentinel-v1-increment3.md): "
-        "_render_rules' sort key omits to_port, so atomic rules differing only in "
-        "to_port render in hash-seed-dependent order across processes, breaking the "
-        "deterministic-output requirement (AC11, A-i19)",
-    )
     def test_r10_rule_rendering_stable_across_hash_seeds(self):
         """Rendered rule lists must be byte-identical across interpreter
         processes (PYTHONHASHSEED 0 and 5 are known to produce different set

@@ -1,0 +1,21 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_instance.serveur_répliqué[\"日本-α\"]",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "serveur_répliqué[\"日本-α\"]",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "instance_type": "t3.micro"
+        }
+      }
+    }
+  ]
+}

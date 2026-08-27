@@ -1,0 +1,41 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_instance.a",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "a",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "x": 1
+        },
+        "after": {
+          "x": 1
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.b",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "b",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "y": 2
+        },
+        "after": {
+          "y": 2
+        }
+      }
+    }
+  ]
+}

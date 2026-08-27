@@ -1,0 +1,177 @@
+{
+  "meta": {
+    "version": "2026.08.0",
+    "snapshot_date": "2026-08-27",
+    "sources": [
+      "https://aws.amazon.com/ec2/pricing/on-demand/",
+      "https://aws.amazon.com/ebs/pricing/",
+      "https://aws.amazon.com/rds/postgresql/pricing/",
+      "https://aws.amazon.com/rds/mysql/pricing/",
+      "https://aws.amazon.com/vpc/pricing/",
+      "https://aws.amazon.com/elasticloadbalancing/pricing/"
+    ],
+    "notes": [
+      "Hand-curated snapshot; values are on-demand USD rates and will lag the live pricing pages.",
+      "aws_instance: Linux, shared tenancy, on-demand hourly only.",
+      "aws_ebs_volume: per-GB-month only; provisioned IOPS/throughput charges are not priced (documented limitation).",
+      "aws_db_instance: single-AZ on-demand hourly per engine:instance_class (doubled by the estimator for multi_az) plus per-GB-month storage; I/O and backup charges are not priced.",
+      "aws_nat_gateway: hourly only; data-processing charges are not priced (documented limitation).",
+      "aws_lb: hourly only per load_balancer_type; LCU charges are not priced (documented limitation)."
+    ]
+  },
+  "regions": {
+    "us-east-1": {
+      "aws_instance": {
+        "t2.micro": "0.0116",
+        "t3.micro": "0.0104",
+        "t3.small": "0.0208",
+        "t3.medium": "0.0416",
+        "t3.large": "0.0832",
+        "t3.xlarge": "0.1664",
+        "t3.2xlarge": "0.3328",
+        "m5.large": "0.096",
+        "m5.xlarge": "0.192",
+        "m6i.large": "0.096",
+        "c5.large": "0.085",
+        "r5.large": "0.126"
+      },
+      "aws_ebs_volume": {
+        "gp2": "0.10",
+        "gp3": "0.08",
+        "io1": "0.125",
+        "io2": "0.125",
+        "st1": "0.045",
+        "standard": "0.05"
+      },
+      "aws_db_instance.instance": {
+        "postgres:db.t3.micro": "0.018",
+        "postgres:db.t3.small": "0.036",
+        "postgres:db.t3.medium": "0.072",
+        "postgres:db.t3.large": "0.145",
+        "postgres:db.m5.large": "0.178",
+        "postgres:db.r5.large": "0.25",
+        "mysql:db.t3.micro": "0.017",
+        "mysql:db.t3.small": "0.034",
+        "mysql:db.t3.medium": "0.068",
+        "mysql:db.t3.large": "0.136",
+        "mysql:db.m5.large": "0.171",
+        "mysql:db.r5.large": "0.24"
+      },
+      "aws_db_instance.storage": {
+        "gp2": "0.115",
+        "gp3": "0.115",
+        "io1": "0.125",
+        "standard": "0.10"
+      },
+      "aws_nat_gateway": {
+        "hourly": "0.045"
+      },
+      "aws_lb": {
+        "application": "0.0225",
+        "network": "0.0225"
+      }
+    },
+    "us-west-2": {
+      "aws_instance": {
+        "t2.micro": "0.0116",
+        "t3.micro": "0.0104",
+        "t3.small": "0.0208",
+        "t3.medium": "0.0416",
+        "t3.large": "0.0832",
+        "t3.xlarge": "0.1664",
+        "t3.2xlarge": "0.3328",
+        "m5.large": "0.096",
+        "m5.xlarge": "0.192",
+        "m6i.large": "0.096",
+        "c5.large": "0.085",
+        "r5.large": "0.126"
+      },
+      "aws_ebs_volume": {
+        "gp2": "0.10",
+        "gp3": "0.08",
+        "io1": "0.125",
+        "io2": "0.125",
+        "st1": "0.045",
+        "standard": "0.05"
+      },
+      "aws_db_instance.instance": {
+        "postgres:db.t3.micro": "0.018",
+        "postgres:db.t3.small": "0.036",
+        "postgres:db.t3.medium": "0.072",
+        "postgres:db.t3.large": "0.145",
+        "postgres:db.m5.large": "0.178",
+        "postgres:db.r5.large": "0.25",
+        "mysql:db.t3.micro": "0.017",
+        "mysql:db.t3.small": "0.034",
+        "mysql:db.t3.medium": "0.068",
+        "mysql:db.t3.large": "0.136",
+        "mysql:db.m5.large": "0.171",
+        "mysql:db.r5.large": "0.24"
+      },
+      "aws_db_instance.storage": {
+        "gp2": "0.115",
+        "gp3": "0.115",
+        "io1": "0.125",
+        "standard": "0.10"
+      },
+      "aws_nat_gateway": {
+        "hourly": "0.045"
+      },
+      "aws_lb": {
+        "application": "0.0225",
+        "network": "0.0225"
+      }
+    },
+    "eu-west-1": {
+      "aws_instance": {
+        "t2.micro": "0.0126",
+        "t3.micro": "0.0114",
+        "t3.small": "0.0228",
+        "t3.medium": "0.0456",
+        "t3.large": "0.0912",
+        "t3.xlarge": "0.1824",
+        "t3.2xlarge": "0.3648",
+        "m5.large": "0.107",
+        "m5.xlarge": "0.214",
+        "m6i.large": "0.107",
+        "c5.large": "0.096",
+        "r5.large": "0.141"
+      },
+      "aws_ebs_volume": {
+        "gp2": "0.11",
+        "gp3": "0.088",
+        "io1": "0.138",
+        "io2": "0.138",
+        "st1": "0.05",
+        "standard": "0.055"
+      },
+      "aws_db_instance.instance": {
+        "postgres:db.t3.micro": "0.0198",
+        "postgres:db.t3.small": "0.0396",
+        "postgres:db.t3.medium": "0.0792",
+        "postgres:db.t3.large": "0.16",
+        "postgres:db.m5.large": "0.197",
+        "postgres:db.r5.large": "0.28",
+        "mysql:db.t3.micro": "0.019",
+        "mysql:db.t3.small": "0.038",
+        "mysql:db.t3.medium": "0.076",
+        "mysql:db.t3.large": "0.152",
+        "mysql:db.m5.large": "0.19",
+        "mysql:db.r5.large": "0.265"
+      },
+      "aws_db_instance.storage": {
+        "gp2": "0.127",
+        "gp3": "0.127",
+        "io1": "0.138",
+        "standard": "0.11"
+      },
+      "aws_nat_gateway": {
+        "hourly": "0.048"
+      },
+      "aws_lb": {
+        "application": "0.0252",
+        "network": "0.0252"
+      }
+    }
+  }
+}

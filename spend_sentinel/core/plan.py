@@ -76,6 +76,10 @@ def load_plan(path: str | Path) -> Plan:
         data = json.loads(raw)
     except (UnicodeDecodeError, json.JSONDecodeError):
         raise PlanError("plan file is not valid JSON") from None
+    except RecursionError:
+        # BUG-1: CPython's JSON parser raises RecursionError on hostile,
+        # deeply nested input; map it to the R2 contract (exit 2, one line).
+        raise PlanError("plan JSON is too deeply nested") from None
 
     if not isinstance(data, dict):
         raise PlanError("plan JSON is not an object")
@@ -88,6 +92,8 @@ def load_plan(path: str | Path) -> Plan:
         plan = Plan.model_validate(data)
     except ValidationError as exc:
         raise PlanError(_describe_validation_error(exc)) from None
+    except RecursionError:
+        raise PlanError("plan JSON is too deeply nested") from None
 
     fv = plan.format_version
     if fv != "1" and not fv.startswith("1."):
@@ -160,3 +166,29 @@ def summarize_plan(plan: Plan) -> tuple[PlanSummary, list[ClassifiedChange]]:
         replaced=counts[ActionClass.REPLACE],
     )
     return summary, classified
+
+
+def resolve_plan_region(plan: Plan) -> str | None:
+    """Extract a constant AWS provider region from the plan's configuration (R8).
+
+    Pure function. Returns the first constant ``region`` found among the AWS
+    provider configurations (spec assumption A1: single-region plans; the first
+    constant wins; ``--region`` overrides at the CLI). Returns ``None`` when no
+    AWS provider carries a constant region — the caller must then require
+    ``--region``.
+    """
+    configuration = plan.configuration
+    if configuration is None or configuration.provider_config is None:
+        return None
+    for key in sorted(configuration.provider_config):
+        pc = configuration.provider_config[key]
+        is_aws = pc.name == "aws" or key == "aws" or key.startswith("aws.")
+        if not is_aws or pc.expressions is None:
+            continue
+        region_expr = pc.expressions.get("region")
+        if not isinstance(region_expr, dict):
+            continue
+        constant = region_expr.get("constant_value")
+        if isinstance(constant, str) and constant:
+            return constant
+    return None

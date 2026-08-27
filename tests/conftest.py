@@ -100,6 +100,46 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+def make_state_resource(
+    address: str = "aws_instance.web",
+    type_: str = "aws_instance",
+    values: dict[str, Any] | None = None,
+    mode: str = "managed",
+    sensitive_values: Any = None,
+) -> dict[str, Any]:
+    """Build one state resource entry (increment 3, R9-R12)."""
+    resource: dict[str, Any] = {
+        "address": address,
+        "mode": mode,
+        "type": type_,
+        "name": address.split(".")[-1],
+        "provider_name": "registry.terraform.io/hashicorp/aws",
+        "values": values if values is not None else {},
+    }
+    if sensitive_values is not None:
+        resource["sensitive_values"] = sensitive_values
+    return resource
+
+
+def make_state(
+    resources: list[dict[str, Any]],
+    child_modules: list[dict[str, Any]] | None = None,
+    format_version: str = "1.0",
+) -> dict[str, Any]:
+    """Build a minimal `terraform show -json` state document."""
+    root: dict[str, Any] = {"resources": resources}
+    if child_modules is not None:
+        root["child_modules"] = child_modules
+    return {"format_version": format_version, "values": {"root_module": root}}
+
+
+def write_state(tmp_path: Path, state: dict[str, Any], name: str = "state.json") -> str:
+    """Serialize a state dict into tmp_path and return its path as str."""
+    path = tmp_path / name
+    path.write_text(json.dumps(state), encoding="utf-8")
+    return str(path)
+
+
 def run_analyze(runner: CliRunner, plan_path: str, *extra_args: str):  # click Result
     """Invoke `spend-sentinel analyze --plan <path> [extra args]` through CliRunner."""
     from spend_sentinel.cli import main

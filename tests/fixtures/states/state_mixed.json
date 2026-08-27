@@ -1,0 +1,140 @@
+{
+  "format_version": "1.0",
+  "values": {
+    "root_module": {
+      "resources": [
+        {
+          "address": "aws_instance.web",
+          "mode": "managed",
+          "type": "aws_instance",
+          "name": "web",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "id": "i-web",
+            "instance_type": "t3.micro",
+            "tags": {
+              "Name": "web"
+            }
+          }
+        },
+        {
+          "address": "aws_security_group.app",
+          "mode": "managed",
+          "type": "aws_security_group",
+          "name": "app",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "id": "sg-app",
+            "ingress": [
+              {
+                "protocol": "tcp",
+                "from_port": 443,
+                "to_port": 443,
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "ipv6_cidr_blocks": []
+              },
+              {
+                "protocol": "tcp",
+                "from_port": 80,
+                "to_port": 80,
+                "cidr_blocks": [
+                  "10.0.0.0/8",
+                  "192.168.0.0/16"
+                ],
+                "ipv6_cidr_blocks": []
+              }
+            ],
+            "egress": [
+              {
+                "protocol": "-1",
+                "from_port": 0,
+                "to_port": 0,
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "ipv6_cidr_blocks": [
+                  "::/0"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_s3_bucket.gone",
+          "mode": "managed",
+          "type": "aws_s3_bucket",
+          "name": "gone",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "bucket": "bucket-gone",
+            "tags": {},
+            "versioning": [
+              {
+                "enabled": false
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_lambda_function.fn",
+          "mode": "managed",
+          "type": "aws_lambda_function",
+          "name": "fn",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "function_name": "fn"
+          }
+        },
+        {
+          "address": "data.aws_ami.latest",
+          "mode": "data",
+          "type": "aws_ami",
+          "name": "latest",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "values": {
+            "id": "ami-1"
+          }
+        }
+      ],
+      "child_modules": [
+        {
+          "resources": [
+            {
+              "address": "module.store.aws_s3_bucket.logs",
+              "mode": "managed",
+              "type": "aws_s3_bucket",
+              "name": "logs",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "bucket": "bucket-logs",
+                "tags": {
+                  "Team": "core"
+                },
+                "versioning": [
+                  {
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "address": "module.store.aws_instance.err",
+              "mode": "managed",
+              "type": "aws_instance",
+              "name": "err",
+              "provider_name": "registry.terraform.io/hashicorp/aws",
+              "values": {
+                "id": "i-err",
+                "instance_type": "t3.small",
+                "tags": {}
+              }
+            }
+          ],
+          "child_modules": []
+        }
+      ]
+    }
+  }
+}

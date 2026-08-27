@@ -3,8 +3,9 @@
 A-i8 assumption (wrong-typed attributes -> attributes_unknown) and
 security/edge behavior of hostile attribute values.
 
-Known defects BUG-2 and BUG-3 are xfailed with references to
-docs/test-reports/feature-spend-sentinel-v1-increment2.md.
+BUG-2 and BUG-3 (docs/test-reports/feature-spend-sentinel-v1-increment2.md)
+were fixed in the review commits riding the increment-3 merge; their former
+xfail tests now run as regular regression tests below.
 """
 
 from __future__ import annotations

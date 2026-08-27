@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -37,12 +38,56 @@ MAX_PLAN_BYTES: int = 50 * 1024 * 1024
 
 
 class PlanError(Exception):
-    """A plan file could not be ingested.
+    """An input file (plan or state) could not be ingested.
 
     The message is a single line describing the problem. It intentionally does
     not include the file path (the caller adds it) and never includes file
     contents.
     """
+
+
+def load_json_document(path: str | Path, what: str) -> dict[str, Any]:
+    """Read an untrusted ``terraform show -json`` file fail-closed (R2 pattern).
+
+    Shared by plan and state ingestion: 50 MB size cap enforced before the
+    read, JSON parsed with :class:`RecursionError` mapped to a diagnostic
+    (BUG-1), and the top level required to be an object. ``what`` names the
+    document kind in diagnostics (e.g. ``"plan"``, ``"state"``).
+
+    Raises:
+        PlanError: on any failure; the message never echoes file contents.
+    """
+    doc_path = Path(path)
+
+    try:
+        size = doc_path.stat().st_size
+    except FileNotFoundError:
+        raise PlanError(f"{what} file not found") from None
+    except OSError:
+        raise PlanError(f"{what} file is not readable") from None
+
+    if doc_path.is_dir():
+        raise PlanError(f"{what} path is a directory, not a file")
+    if size > MAX_PLAN_BYTES:
+        raise PlanError(f"{what} file exceeds the 50 MB size cap")
+
+    try:
+        raw = doc_path.read_bytes()
+    except OSError:
+        raise PlanError(f"{what} file is not readable") from None
+
+    try:
+        data = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise PlanError(f"{what} file is not valid JSON") from None
+    except RecursionError:
+        # BUG-1: CPython's JSON parser raises RecursionError on hostile,
+        # deeply nested input; map it to the R2 contract (exit 2, one line).
+        raise PlanError(f"{what} JSON is too deeply nested") from None
+
+    if not isinstance(data, dict):
+        raise PlanError(f"{what} JSON is not an object")
+    return data
 
 
 def load_plan(path: str | Path) -> Plan:
@@ -53,36 +98,8 @@ def load_plan(path: str | Path) -> Plan:
             not valid JSON, or does not validate against the consumed subset
             of the ``terraform show -json`` schema.
     """
-    plan_path = Path(path)
+    data = load_json_document(path, "plan")
 
-    try:
-        size = plan_path.stat().st_size
-    except FileNotFoundError:
-        raise PlanError("plan file not found") from None
-    except OSError:
-        raise PlanError("plan file is not readable") from None
-
-    if plan_path.is_dir():
-        raise PlanError("plan path is a directory, not a file")
-    if size > MAX_PLAN_BYTES:
-        raise PlanError("plan file exceeds the 50 MB size cap")
-
-    try:
-        raw = plan_path.read_bytes()
-    except OSError:
-        raise PlanError("plan file is not readable") from None
-
-    try:
-        data = json.loads(raw)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise PlanError("plan file is not valid JSON") from None
-    except RecursionError:
-        # BUG-1: CPython's JSON parser raises RecursionError on hostile,
-        # deeply nested input; map it to the R2 contract (exit 2, one line).
-        raise PlanError("plan JSON is too deeply nested") from None
-
-    if not isinstance(data, dict):
-        raise PlanError("plan JSON is not an object")
     if "format_version" not in data:
         raise PlanError("plan JSON lacks required key 'format_version'")
     if "resource_changes" not in data:

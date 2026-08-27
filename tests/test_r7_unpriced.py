@@ -251,17 +251,24 @@ class TestHostileNumericValues:
                    "allocated_storage": bad},
         ) == UnpricedReason.ATTRIBUTES_UNKNOWN
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG-3 (see docs/test-reports/feature-spend-sentinel-v1-increment2.md): "
-        "negative sizes are priced to a negative monthly delta on create, letting a "
-        "crafted plan offset real cost; should fail closed as attributes_unknown "
-        "(also flagged to pm-planner as S4 — the spec is silent)",
+    @pytest.mark.parametrize(
+        ("type_", "after"),
+        [
+            ("aws_ebs_volume", {"type": "gp3", "size": -100}),
+            (
+                "aws_db_instance",
+                {"engine": "postgres", "instance_class": "db.t3.micro",
+                 "allocated_storage": -1},
+            ),
+        ],
     )
-    def test_r7_negative_size_fails_closed(self, pricing):
-        assert unpriced_reason(
-            pricing, type_="aws_ebs_volume", after={"type": "gp3", "size": -100}
-        ) == UnpricedReason.ATTRIBUTES_UNKNOWN
+    def test_r7_negative_size_fails_closed(self, pricing, type_, after):
+        """BUG-3 (fixed): negative GB counts are impossible infrastructure and a
+        cost-offset vector against the R14 gate -> attributes_unknown, never a
+        negative delta (spec silent; direction flagged as S4)."""
+        assert unpriced_reason(pricing, type_=type_, after=after) == (
+            UnpricedReason.ATTRIBUTES_UNKNOWN
+        )
 
     def test_r7_zero_size_prices_to_zero(self, pricing):
         """Zero GB is priceable and harmless: 0.00, not unpriced."""

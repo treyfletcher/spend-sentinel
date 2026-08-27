@@ -180,6 +180,13 @@ def _require_number(attrs: dict[str, Any], key: str) -> Decimal:
     ``inf``, and ``Decimal(str(...))`` constructs NaN/Infinity *successfully* —
     the InvalidOperation only fires later, at ``quantize`` in :func:`estimate`,
     escaping the fail-closed contract as a traceback.
+
+    Negative values are rejected too (BUG-3): a negative GB count is impossible
+    infrastructure, and pricing it would let a crafted plan carry a negative
+    create delta that offsets real cost under the R14 ``max_monthly_delta``
+    gate. The spec is silent on numeric ranges (flagged as S4); treating the
+    attribute as ``attributes_unknown`` is the fail-closed reading — the
+    resource stays visible in ``unpriced`` and triggers ``treat_unpriced_as``.
     """
     value = attrs.get(key)
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -188,6 +195,6 @@ def _require_number(attrs: dict[str, Any], key: str) -> Decimal:
         number = Decimal(str(value))
     except InvalidOperation:
         raise _Unpriced(UnpricedReason.ATTRIBUTES_UNKNOWN) from None
-    if not number.is_finite():
+    if not number.is_finite() or number < 0:
         raise _Unpriced(UnpricedReason.ATTRIBUTES_UNKNOWN)
     return number

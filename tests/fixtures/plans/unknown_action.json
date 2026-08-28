@@ -1,0 +1,21 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_instance.forgotten",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "forgotten",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "x": 1
+        },
+        "after": null
+      }
+    }
+  ]
+}

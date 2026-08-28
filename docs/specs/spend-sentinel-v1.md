@@ -49,7 +49,7 @@ Each requirement is verifiable offline with fixture files unless noted.
   rules:
     max_monthly_delta:            # BLOCK if cost delta exceeds limit
       limit_usd: 200
-      treat_unpriced_as: warn     # warn | ignore | block  (default warn)
+      treat_unpriced_as: warn     # warn | ignore | block  (default warn); limit_usd defaults to 200 (owner decision 2026-08-28); null = no ceiling
     open_ingress:                 # BLOCK on 0.0.0.0/0 or ::/0 ingress
       allowed_ports: [80, 443]    # exempt these from blocking (default [])
     deletions:                    # deletions of any resource

@@ -1,0 +1,121 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_instance.created",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "created",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "instance_type": "t3.micro"
+        }
+      }
+    },
+    {
+      "address": "aws_instance.deleted",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "deleted",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "instance_type": "t3.small"
+        },
+        "after": null
+      }
+    },
+    {
+      "address": "aws_instance.updated",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "updated",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "instance_type": "t3.large"
+        },
+        "after": {
+          "instance_type": "t3.xlarge"
+        }
+      }
+    },
+    {
+      "address": "aws_db_instance.replaced",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "replaced",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "instance_class": "db.t3.micro"
+        },
+        "after": {
+          "instance_class": "db.t3.small"
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.untouched",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "untouched",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "bucket": "b"
+        },
+        "after": {
+          "bucket": "b"
+        }
+      }
+    },
+    {
+      "address": "data.aws_ami.latest",
+      "mode": "data",
+      "type": "aws_ami",
+      "name": "latest",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "read"
+        ],
+        "before": null,
+        "after": {
+          "id": "ami-999"
+        }
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws",
+        "expressions": {
+          "region": {
+            "constant_value": "us-east-1"
+          }
+        }
+      }
+    }
+  }
+}

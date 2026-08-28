@@ -1,0 +1,37 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_instance.create_null_before",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "create_null_before",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "instance_type": "t3.micro"
+        }
+      }
+    },
+    {
+      "address": "aws_instance.delete_null_after",
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "delete_null_after",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "instance_type": "t3.micro"
+        },
+        "after": null
+      }
+    }
+  ]
+}

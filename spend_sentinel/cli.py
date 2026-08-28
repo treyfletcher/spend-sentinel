@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 import click
 
@@ -40,6 +40,9 @@ from spend_sentinel.core.verdict import combine, exit_code
 from spend_sentinel.pricing.snapshot import SnapshotError, SnapshotPricingSource
 from spend_sentinel.render.jsonout import render_json
 from spend_sentinel.render.markdown import render_md
+
+if TYPE_CHECKING:
+    from spend_sentinel.pricing.live import LivePricingSource
 
 
 def _fail(message: str) -> NoReturn:
@@ -121,6 +124,15 @@ def main() -> None:
     default=False,
     help="Exit 1 on a WARN verdict (default: WARN exits 0).",
 )
+@click.option(
+    "--live-pricing",
+    is_flag=True,
+    default=False,
+    help="Resolve rates from the AWS Pricing API (pricing:GetProducts, needs "
+    "the [aws] extra) with per-key fallback to the bundled snapshot; any "
+    "failure degrades to snapshot and never fails the run. Endpoint region "
+    "defaults to us-east-1 (override: SPEND_SENTINEL_PRICING_ENDPOINT_REGION).",
+)
 def analyze(
     plan_path: str,
     region_flag: str | None,
@@ -130,6 +142,7 @@ def analyze(
     out_json: str | None,
     out_md: str | None,
     fail_on_warn: bool,
+    live_pricing: bool,
 ) -> None:
     """Analyze a Terraform plan: cost delta, drift, policy gates, verdict."""
     try:
@@ -164,7 +177,10 @@ def analyze(
         supported = ", ".join(pricing.supported_regions)
         _fail(f"region '{region}' is not in the pricing snapshot (supported: {supported})")
 
-    cost = estimate(plan, pricing, region)
+    # Live pricing (v1.1, R22/R24/R27): opt-in; the default path constructs
+    # exactly the v1 snapshot source and imports no live-pricing module.
+    live_source = _make_live_pricing_source(pricing) if live_pricing else None
+    cost = estimate(plan, live_source if live_source is not None else pricing, region)
 
     # Drift (R9-R12). R11: with --skip-drift or no --state, no AwsReader call
     # path is exercised and the boto3 adapter module is never imported.
@@ -190,8 +206,22 @@ def analyze(
             pricing_snapshot_version=pricing.meta.version,
             pricing_snapshot_date=pricing.meta.snapshot_date,
             region=region,
+            live_pricing=live_source.report() if live_source is not None else None,
         ),
     )
+
+    # R27: one stderr line per distinct degradation reason; never fails the
+    # run and never changes the exit code (A11). Reasons are internal enums.
+    if verdict.meta.live_pricing is not None:
+        seen_reasons: set[str] = set()
+        for warning in verdict.meta.live_pricing.warnings:
+            if warning.reason not in seen_reasons:
+                seen_reasons.add(warning.reason)
+                click.echo(
+                    "spend-sentinel: warning: live pricing degraded "
+                    f"({warning.reason}); snapshot fallback used",
+                    err=True,
+                )
 
     # Outputs (R19): files when requested; Markdown to stdout with no flags.
     if out_json is not None:
@@ -221,6 +251,29 @@ def analyze(
     code = exit_code(verdict, errors=errors, fail_on_warn=fail_on_warn)
     if code != 0:
         sys.exit(code)
+
+
+def _make_live_pricing_source(snapshot: SnapshotPricingSource) -> LivePricingSource:
+    """Wire live pricing (v1.1); imported only here and only under --live-pricing.
+
+    Never fails the run: a transport that cannot be built yields a source
+    pre-disabled with the run-level reason (boto3_missing/client_init_error).
+    """
+    from spend_sentinel.adapters.boto3_pricing import (
+        Boto3PricingClient,
+        PricingClientUnavailable,
+        resolve_endpoint_region,
+    )
+    from spend_sentinel.pricing.live import LivePricingSource
+
+    endpoint_region = resolve_endpoint_region()
+    try:
+        client = Boto3PricingClient()
+    except PricingClientUnavailable as exc:
+        return LivePricingSource(
+            None, snapshot, endpoint_region=endpoint_region, disabled_reason=exc.reason
+        )
+    return LivePricingSource(client, snapshot, endpoint_region=endpoint_region)
 
 
 def _make_live_reader(region: str) -> AwsReader:

@@ -325,6 +325,9 @@ class VerdictMeta(BaseModel):
     pricing_snapshot_version: str
     pricing_snapshot_date: str
     region: str
+    #: v1.1 (R30): present only when --live-pricing was requested; None keeps
+    #: the default path's JSON/Markdown byte-identical to v1 (R22).
+    live_pricing: LivePricingReport | None = None
 
 
 class Verdict(BaseModel):

@@ -6,7 +6,6 @@ suffix, A-i26 ignore-renders-pass); messages are sanitized.
 
 from __future__ import annotations
 
-import json
 from decimal import Decimal
 
 import pytest
@@ -23,7 +22,7 @@ from spend_sentinel.core.models import (
 )
 from spend_sentinel.core.policy import Policy, _eval_drift, evaluate
 
-from .conftest import make_change, make_plan, run_analyze, write_plan
+from .conftest import make_change, make_plan, run_analyze_json, write_plan
 
 RULE_NAMES = ["max_monthly_delta", "open_ingress", "deletions", "drift"]
 
@@ -66,9 +65,9 @@ class TestEveryRulePresent:
                 provider_region="us-east-1",
             ),
         )
-        result = run_analyze(runner, plan_path)
+        result, payload = run_analyze_json(runner, plan_path)
         assert result.exit_code == 0
-        rules = json.loads(result.stdout)["policy"]["rules"]
+        rules = payload["policy"]["rules"]
         assert [r["name"] for r in rules] == RULE_NAMES
         assert all(set(r) == {"name", "result", "message"} for r in rules)
 
@@ -188,10 +187,9 @@ class TestMessageSanitization:
                 provider_region="us-east-1",
             ),
         )
-        result = run_analyze(runner, plan_path)
-        assert result.exit_code == 0
-        rules = {r["name"]: r for r in
-                 json.loads(result.stdout)["policy"]["rules"]}
+        result, payload = run_analyze_json(runner, plan_path)
+        assert result.exit_code == 0  # deletions warn -> WARN -> exit 0
+        rules = {r["name"]: r for r in payload["policy"]["rules"]}
         message = rules["deletions"]["message"]
         assert "\u2028" not in message
         assert "\u0085" not in message

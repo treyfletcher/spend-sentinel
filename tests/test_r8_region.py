@@ -7,7 +7,6 @@ Covers AC12 and the coder's A-i10 (sorted provider_config scan order).
 
 from __future__ import annotations
 
-import json
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
@@ -22,6 +21,7 @@ from .conftest import (
     make_change,
     make_plan,
     run_analyze,
+    run_analyze_json,
     write_plan,
 )
 
@@ -133,10 +133,11 @@ class TestResolvePlanRegionUnit:
 class TestRegionThroughCliAc12:
     def test_r8_ac12_plan_constant_region_prices_apply(self, runner):
         """AC12: constant eu-west-1, no --region -> eu-west-1 prices used."""
-        result = run_analyze(runner, fixture_path("region_constant_eu_west.json"))
+        result, payload = run_analyze_json(
+            runner, fixture_path("region_constant_eu_west.json")
+        )
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
-        assert payload["cost"]["region"] == "eu-west-1"
+        assert payload["meta"]["region"] == "eu-west-1"  # R19: region lives in meta
         assert payload["cost"]["monthly_delta_usd"] == instance_monthly("eu-west-1", "t3.micro")
         # meaningful only if the two regions actually price differently
         assert instance_monthly("eu-west-1", "t3.micro") != instance_monthly(
@@ -144,12 +145,11 @@ class TestRegionThroughCliAc12:
         )
 
     def test_r8_region_flag_overrides_plan_constant(self, runner):
-        result = run_analyze(
+        result, payload = run_analyze_json(
             runner, fixture_path("region_constant_eu_west.json"), "--region", "us-east-1"
         )
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
-        assert payload["cost"]["region"] == "us-east-1"
+        assert payload["meta"]["region"] == "us-east-1"
         assert payload["cost"]["monthly_delta_usd"] == instance_monthly("us-east-1", "t3.micro")
 
     def test_r8_ac12_no_resolvable_region_exit_2_mentions_flag(self, runner, tmp_path):
@@ -211,8 +211,7 @@ class TestRegionThroughCliAc12:
                 ]
             ),
         )
-        result = run_analyze(runner, path, "--region", "us-west-2")
+        result, payload = run_analyze_json(runner, path, "--region", "us-west-2")
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
-        assert payload["cost"]["region"] == "us-west-2"
+        assert payload["meta"]["region"] == "us-west-2"
         assert payload["cost"]["monthly_delta_usd"] == instance_monthly("us-west-2", "m5.large")

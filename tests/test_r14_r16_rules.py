@@ -4,7 +4,6 @@ over constructed CostReport/Plan inputs; AC6 matrix through the CLI.
 
 from __future__ import annotations
 
-import json
 from decimal import Decimal
 
 import pytest
@@ -18,7 +17,7 @@ from spend_sentinel.core.models import (
 )
 from spend_sentinel.core.policy import Policy, _eval_deletions, _eval_max_monthly_delta
 
-from .conftest import make_change, make_plan, run_analyze, write_plan
+from .conftest import make_change, make_plan, run_analyze_json, write_plan
 
 
 def policy_with(**rules) -> Policy:
@@ -209,25 +208,37 @@ class TestAc6ThroughCli:
             name="ac6_plan.json",
         )
 
-    def rule(self, result, name):
-        payload = json.loads(result.stdout)
+    @staticmethod
+    def rule(payload, name):
         return {r["name"]: r for r in payload["policy"]["rules"]}[name]
 
-    def test_ac6_default_warn(self, runner, delete_plan, tmp_path, monkeypatch):
+    def test_ac6_default_warn_exits_0(self, runner, delete_plan, tmp_path, monkeypatch):
+        """AC6: deletion under warn -> WARN verdict, exit 0."""
         monkeypatch.chdir(tmp_path)  # no spend-sentinel.yaml here
-        result = run_analyze(runner, delete_plan)
-        assert result.exit_code == 0  # informational until R18
-        rule = self.rule(result, "deletions")
+        result, payload = run_analyze_json(runner, delete_plan)
+        assert result.exit_code == 0
+        assert payload["verdict"] == "WARN"
+        rule = self.rule(payload, "deletions")
         assert rule["result"] == "warn"
         assert "aws_db_instance.db" in rule["message"]
 
+    def test_ac6_warn_with_fail_on_warn_exits_1(self, runner, delete_plan, tmp_path,
+                                                monkeypatch):
+        """AC6: the same WARN exits 1 under --fail-on-warn (R18)."""
+        monkeypatch.chdir(tmp_path)
+        result, payload = run_analyze_json(runner, delete_plan, "--fail-on-warn")
+        assert result.exit_code == 1
+        assert payload["verdict"] == "WARN"  # the verdict itself stays WARN
+
     def test_ac6_protected_type_blocks_despite_ignore(self, runner, delete_plan,
                                                       tmp_path):
+        """AC6: protected_types -> BLOCK verdict, exit 1 (R18)."""
         policy = tmp_path / "prot.yaml"
         policy.write_text(
             "rules:\n  deletions:\n    action: ignore\n"
             "    protected_types: [aws_db_instance]\n"
         )
-        result = run_analyze(runner, delete_plan, "--policy", str(policy))
-        assert result.exit_code == 0  # informational until R18
-        assert self.rule(result, "deletions")["result"] == "block"
+        result, payload = run_analyze_json(runner, delete_plan, "--policy", str(policy))
+        assert result.exit_code == 1
+        assert payload["verdict"] == "BLOCK"
+        assert self.rule(payload, "deletions")["result"] == "block"

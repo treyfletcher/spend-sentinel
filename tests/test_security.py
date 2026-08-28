@@ -119,15 +119,21 @@ class TestFailClosedNoTraceback:
         assert len([ln for ln in proc.stderr.splitlines() if ln.strip()]) == 1
 
     def test_huge_flat_resource_changes_handled(self, tmp_path):
-        """A wide (not deep) plan parses fine and deterministically."""
+        """A wide (not deep) plan parses fine; its delta breaches the $200
+        default ceiling -> BLOCK, exit 1 (R18), never a traceback."""
         changes = [
-            make_change(address=f"aws_instance.x{i}", actions=["create"])
+            make_change(address=f"aws_instance.x{i}", actions=["create"],
+                        after={"instance_type": "t3.micro"})
             for i in range(2000)
         ]
         path = write_plan(tmp_path, make_plan(changes, provider_region="us-east-1"))
-        proc = run_cli_subprocess("analyze", "--plan", path)
-        assert proc.returncode == 0
-        assert json.loads(proc.stdout)["summary"]["created"] == 2000
+        out = tmp_path / "v.json"
+        proc = run_cli_subprocess("analyze", "--plan", path, "--out-json", str(out))
+        assert proc.returncode == 1
+        assert "Traceback" not in proc.stderr
+        payload = json.loads(out.read_text())
+        assert payload["verdict"] == "BLOCK"
+        assert payload["summary"]["created"] == 2000
 
 
 class TestDiagnosticLineInjection:

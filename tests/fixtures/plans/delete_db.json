@@ -1,0 +1,36 @@
+{
+  "format_version": "1.2",
+  "resource_changes": [
+    {
+      "address": "aws_db_instance.legacy",
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "legacy",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "engine": "postgres",
+          "instance_class": "db.t3.micro",
+          "allocated_storage": 20
+        },
+        "after": null
+      }
+    }
+  ],
+  "configuration": {
+    "provider_config": {
+      "aws": {
+        "name": "aws",
+        "full_name": "registry.terraform.io/hashicorp/aws",
+        "expressions": {
+          "region": {
+            "constant_value": "us-east-1"
+          }
+        }
+      }
+    }
+  }
+}

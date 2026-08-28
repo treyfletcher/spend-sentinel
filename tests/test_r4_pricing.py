@@ -272,13 +272,11 @@ class TestPricingThroughCli:
                 provider_region="us-east-1",
             ),
         )
-        import json as _json
+        from .conftest import run_analyze_json
 
-        from .conftest import run_analyze
-
-        result = run_analyze(runner, path)
+        result, payload = run_analyze_json(runner, path)
         assert result.exit_code == 0
-        payload = _json.loads(result.stdout)
+        assert payload["verdict"] == "PASS"
         assert payload["cost"]["monthly_delta_usd"] == str(instance + volume)
         assert payload["cost"]["unpriced"] == []
 

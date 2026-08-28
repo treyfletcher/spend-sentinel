@@ -6,14 +6,12 @@ references and prefix lists never open).
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from spend_sentinel.core.models import Plan, RuleOutcome
 from spend_sentinel.core.policy import Policy, _eval_open_ingress
 
-from .conftest import make_change, make_plan, run_analyze, write_plan
+from .conftest import make_change, make_plan, run_analyze_json, write_plan
 
 
 def evaluate_open_ingress(changes, allowed_ports=()):
@@ -295,10 +293,10 @@ class TestAc5ThroughCli:
         )
         policy = tmp_path / "ac5.yaml"
         policy.write_text("rules:\n  open_ingress:\n    allowed_ports: [80, 443]\n")
-        result = run_analyze(runner, plan_path, "--policy", str(policy))
-        assert result.exit_code == 0  # informational until R18
-        rules = {r["name"]: r for r in
-                 json.loads(result.stdout)["policy"]["rules"]}
+        result, payload = run_analyze_json(runner, plan_path, "--policy", str(policy))
+        assert result.exit_code == 1  # R18: open_ingress BLOCK gates the exit (AC5)
+        assert payload["verdict"] == "BLOCK"
+        rules = {r["name"]: r for r in payload["policy"]["rules"]}
         assert rules["open_ingress"]["result"] == "block"
         assert "aws_security_group.app" in rules["open_ingress"]["message"]
         assert "22" in rules["open_ingress"]["message"]
@@ -311,7 +309,7 @@ class TestAc5ThroughCli:
             ),
             name="ac5_443.json",
         )
-        result2 = run_analyze(runner, plan443, "--policy", str(policy))
-        rules2 = {r["name"]: r for r in
-                  json.loads(result2.stdout)["policy"]["rules"]}
+        result2, payload2 = run_analyze_json(runner, plan443, "--policy", str(policy))
+        assert result2.exit_code == 0
+        rules2 = {r["name"]: r for r in payload2["policy"]["rules"]}
         assert rules2["open_ingress"]["result"] == "pass"

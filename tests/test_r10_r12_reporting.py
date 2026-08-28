@@ -11,7 +11,6 @@ its former xfail now runs as a regular regression test.
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
@@ -27,7 +26,6 @@ from .conftest import (
     make_plan,
     make_state,
     make_state_resource,
-    run_analyze,
     write_plan,
     write_state,
 )
@@ -194,8 +192,10 @@ class TestErrorsR12Cli:
     def analyze_with_reader(self, runner, monkeypatch, plan_path, state_path, reader):
         import spend_sentinel.cli as cli
 
+        from .conftest import run_analyze_json
+
         monkeypatch.setattr(cli, "_make_live_reader", lambda region: reader)
-        return run_analyze(runner, plan_path, "--state", state_path)
+        return run_analyze_json(runner, plan_path, "--state", state_path)
 
     def test_r12_cli_error_exits_2_report_still_produced(
         self, runner, monkeypatch, tmp_path, plan_path
@@ -219,9 +219,11 @@ class TestErrorsR12Cli:
                 "errors": {"i-bad": "AuthFailure: not authorized"},
             }
         )
-        result = self.analyze_with_reader(runner, monkeypatch, plan_path, state_path, reader)
+        result, payload = self.analyze_with_reader(
+            runner, monkeypatch, plan_path, state_path, reader
+        )
         assert result.exit_code == 2
-        payload = json.loads(result.stdout)  # the report was produced before exiting
+        assert payload is not None  # the report was produced before exiting (R12)
         assert payload["drift"]["status"] == "ran"
         assert [e["address"] for e in payload["drift"]["errors"]] == ["aws_instance.bad"]
         assert "AuthFailure" in payload["drift"]["errors"][0]["error"]
@@ -247,8 +249,12 @@ class TestErrorsR12Cli:
             ),
         )
         reader = FixtureAwsReader({"errors": {"i-bad": "Throttling: rate exceeded"}})
-        result = self.analyze_with_reader(runner, monkeypatch, plan_path, state_path, reader)
+        result, payload = self.analyze_with_reader(
+            runner, monkeypatch, plan_path, state_path, reader
+        )
+        # verdict is PASS (no drifts, no deletions) but the read error forces 2
         assert result.exit_code == 2
+        assert payload["verdict"] == "PASS"
 
     def test_r12_cli_no_errors_exits_0_even_with_drift(
         self, runner, monkeypatch, tmp_path, plan_path
@@ -265,9 +271,12 @@ class TestErrorsR12Cli:
         reader = FixtureAwsReader(
             {"instances": {"i-1": {"instance_type": "t3.large", "tags": {}}}}
         )
-        result = self.analyze_with_reader(runner, monkeypatch, plan_path, state_path, reader)
+        result, payload = self.analyze_with_reader(
+            runner, monkeypatch, plan_path, state_path, reader
+        )
+        # drift detected -> drift rule WARN -> WARN verdict, still exit 0 (A6)
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
+        assert payload["verdict"] == "WARN"
         assert len(payload["drift"]["drifts"]) == 1
 
 

@@ -95,6 +95,30 @@ def write_plan(tmp_path: Path, plan: dict[str, Any], name: str = "plan.json") ->
     return str(path)
 
 
+#: R21: the whole suite must run with no AWS credentials and no default region.
+AWS_ENV_VARS = (
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
+    "AWS_DEFAULT_REGION",
+    "AWS_REGION",
+    "AWS_PROFILE",
+)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _no_aws_credentials():
+    """R21 guard: scrub AWS credential/region env vars for the entire session
+    (mirrors the CI workflow's `env -u` step) and restore them afterwards."""
+    import os
+
+    saved = {var: os.environ.pop(var) for var in AWS_ENV_VARS if var in os.environ}
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
+
+
 @pytest.fixture()
 def runner() -> CliRunner:
     return CliRunner()
@@ -145,3 +169,28 @@ def run_analyze(runner: CliRunner, plan_path: str, *extra_args: str):  # click R
     from spend_sentinel.cli import main
 
     return runner.invoke(main, ["analyze", "--plan", plan_path, *extra_args])
+
+
+def run_analyze_json(runner: CliRunner, plan_path: str, *extra_args: str):
+    """Invoke analyze with `--out-json` into a temp file (R19 behavior: stdout
+    carries Markdown, machine-readable output lives in the file).
+
+    Returns ``(result, payload)`` where ``payload`` is the parsed verdict JSON,
+    or ``None`` when the run failed before writing it (e.g. exit 2).
+    """
+    import tempfile
+
+    from spend_sentinel.cli import main
+
+    with tempfile.TemporaryDirectory(prefix="verdict-") as tmp:
+        out_path = Path(tmp) / "verdict.json"
+        result = runner.invoke(
+            main,
+            ["analyze", "--plan", plan_path, "--out-json", str(out_path), *extra_args],
+        )
+        payload = (
+            json.loads(out_path.read_text(encoding="utf-8"))
+            if out_path.is_file()
+            else None
+        )
+    return result, payload

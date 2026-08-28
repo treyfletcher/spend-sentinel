@@ -6,7 +6,6 @@ Expected values are computed from the bundled snapshot, never hardcoded.
 
 from __future__ import annotations
 
-import json
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
@@ -22,6 +21,7 @@ from .conftest import (
     make_change,
     make_plan,
     run_analyze,
+    run_analyze_json,
     write_plan,
 )
 
@@ -253,9 +253,8 @@ class TestDeterminismR5:
                 provider_region="us-east-1",
             ),
         )
-        result = run_analyze(runner, path)
+        result, payload = run_analyze_json(runner, path)
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
         total = payload["cost"]["monthly_delta_usd"]
         assert isinstance(total, str)
         assert len(total.rsplit(".", 1)[1]) == 2

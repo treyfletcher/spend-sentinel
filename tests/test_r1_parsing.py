@@ -12,7 +12,7 @@ import json
 
 from spend_sentinel.core.plan import load_plan, summarize_plan
 
-from .conftest import fixture_path, run_analyze
+from .conftest import fixture_path, run_analyze_json
 
 
 class TestLoadPlanExtraction:
@@ -76,9 +76,8 @@ class TestLoadPlanExtraction:
 
 class TestCliR1:
     def test_r1_cli_single_create_summary(self, runner):
-        result = run_analyze(runner, fixture_path("create_single_instance.json"))
+        result, payload = run_analyze_json(runner, fixture_path("create_single_instance.json"))
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
         assert payload["summary"] == {
             "created": 1,
             "deleted": 0,
@@ -86,17 +85,14 @@ class TestCliR1:
             "replaced": 0,
             "changed": 1,
         }
-        assert payload["resources"] == [
-            {
-                "address": "aws_instance.web",
-                "type": "aws_instance",
-                "provider": "registry.terraform.io/hashicorp/aws",
-                "action": "create",
-            }
-        ]
+        # R19: the per-resource view lives in cost.breakdown
+        entry = payload["cost"]["breakdown"][0]
+        assert entry["address"] == "aws_instance.web"
+        assert entry["type"] == "aws_instance"
+        assert entry["action"] == "create"
 
     def test_r1_cli_unicode_address_in_output(self, runner):
-        result = run_analyze(runner, fixture_path("unicode_address.json"))
+        result, payload = run_analyze_json(runner, fixture_path("unicode_address.json"))
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
-        assert payload["resources"][0]["address"] == 'aws_instance.serveur_répliqué["日本-α"]'  # noqa: RUF001
+        address = payload["cost"]["breakdown"][0]["address"]
+        assert address == 'aws_instance.serveur_répliqué["日本-α"]'  # noqa: RUF001

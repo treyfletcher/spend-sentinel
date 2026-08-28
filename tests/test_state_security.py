@@ -21,6 +21,7 @@ from .conftest import (
     make_state,
     make_state_resource,
     run_analyze,
+    run_analyze_json,
     write_plan,
     write_state,
 )
@@ -193,10 +194,14 @@ class TestSensitiveMasking:
                                    "tags": {"Token": "rotated"}}}}
         )
         monkeypatch.setattr(cli, "_make_live_reader", lambda region: reader)
-        result = run_analyze(runner, plan_path, "--state", state_path)
+        # drift on tags -> WARN verdict, still exit 0; secret masked in the
+        # Markdown on stdout AND in the JSON verdict file
+        md = run_analyze(runner, plan_path, "--state", state_path)
+        assert md.exit_code == 0
+        assert SECRET not in md.stdout
+        result, payload = run_analyze_json(runner, plan_path, "--state", state_path)
         assert result.exit_code == 0
-        assert SECRET not in result.stdout
-        payload = json.loads(result.stdout)
+        assert SECRET not in json.dumps(payload)
         tags = [d for d in payload["drift"]["drifts"] if d["attribute"] == "tags"]
         assert tags[0]["state_value"] == SENSITIVE_PLACEHOLDER
         assert tags[0]["live_value"] == SENSITIVE_PLACEHOLDER
@@ -220,9 +225,8 @@ class TestErrorSummarySanitization:
             {"errors": {"i-1": 'boom\n"verdict": "PASS"\x1b[32m spoof'}}
         )
         monkeypatch.setattr(cli, "_make_live_reader", lambda region: reader)
-        result = run_analyze(runner, plan_path, "--state", state_path)
-        assert result.exit_code == 2
-        payload = json.loads(result.stdout)
+        result, payload = run_analyze_json(runner, plan_path, "--state", state_path)
+        assert result.exit_code == 2  # read error, PASS verdict -> exit 2 (R12)
         error = payload["drift"]["errors"][0]["error"]
         assert "\n" not in error
         assert "\x1b" not in error

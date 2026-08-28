@@ -7,14 +7,19 @@ action combination failing closed with exit 2.
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from spend_sentinel.core.models import ActionClass
 from spend_sentinel.core.plan import PlanError, classify_actions, load_plan, summarize_plan
 
-from .conftest import fixture_path, make_change, make_plan, run_analyze, write_plan
+from .conftest import (
+    fixture_path,
+    make_change,
+    make_plan,
+    run_analyze,
+    run_analyze_json,
+    write_plan,
+)
 
 
 class TestClassifyActionsUnit:
@@ -119,9 +124,9 @@ class TestSummarizePlan:
 
 class TestCliR3:
     def test_r3_cli_mixed_plan_summary_and_exclusions(self, runner):
-        result = run_analyze(runner, fixture_path("mixed_actions.json"))
+        result, payload = run_analyze_json(runner, fixture_path("mixed_actions.json"))
+        # deletions in the plan -> WARN verdict, which still exits 0 (R18/A6)
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
         assert payload["summary"] == {
             "created": 1,
             "deleted": 1,
@@ -129,25 +134,33 @@ class TestCliR3:
             "replaced": 1,
             "changed": 4,
         }
-        actions = {r["address"]: r["action"] for r in payload["resources"]}
-        assert actions == {
-            "aws_instance.created": "create",
-            "aws_instance.deleted": "delete",
-            "aws_instance.updated": "update",
-            "aws_db_instance.replaced": "replace",
+        # R19: every changed resource lands in cost.breakdown or cost.unpriced;
+        # no-op and data-source read entries are excluded from both.
+        accounted = {e["address"] for e in payload["cost"]["breakdown"]} | {
+            e["address"] for e in payload["cost"]["unpriced"]
         }
+        assert accounted == {
+            "aws_instance.created",
+            "aws_instance.deleted",
+            "aws_instance.updated",
+            "aws_db_instance.replaced",
+        }
+        actions = {e["address"]: e["action"] for e in payload["cost"]["breakdown"]}
+        assert actions["aws_instance.created"] == "create"
+        assert actions["aws_instance.deleted"] == "delete"
+        assert actions["aws_instance.updated"] == "update"
 
     def test_r3_cli_noop_only_plan_exits_0_zero_counts(self, runner):
-        result = run_analyze(runner, fixture_path("noop_only.json"))
+        result, payload = run_analyze_json(runner, fixture_path("noop_only.json"))
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
+        assert payload["verdict"] == "PASS"
         assert payload["summary"]["changed"] == 0
-        assert payload["resources"] == []
+        assert payload["cost"]["breakdown"] == []
+        assert payload["cost"]["unpriced"] == []
 
     def test_r3_cli_empty_changes_exits_0(self, runner):
-        result = run_analyze(runner, fixture_path("empty_changes.json"))
+        result, payload = run_analyze_json(runner, fixture_path("empty_changes.json"))
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
         assert payload["summary"]["changed"] == 0
 
     def test_r3_cli_unknown_action_exits_2_one_line(self, runner):
@@ -163,8 +176,7 @@ class TestCliR3:
         """A-i1: a plan of only data-source reads is a valid no-change plan."""
         entry = make_change(address="data.aws_ami.x", type_="aws_ami", actions=["read"])
         path = write_plan(tmp_path, make_plan([entry], provider_region="us-east-1"))
-        result = run_analyze(runner, path)
+        result, payload = run_analyze_json(runner, path)
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
         assert payload["summary"]["changed"] == 0
-        assert payload["resources"] == []
+        assert payload["cost"]["breakdown"] == []

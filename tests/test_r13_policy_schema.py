@@ -8,7 +8,6 @@ rule `max_cpu` -> exit 2 naming it, no output files).
 
 from __future__ import annotations
 
-import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -17,7 +16,7 @@ import pytest
 from spend_sentinel.core.plan import MAX_PLAN_BYTES, PlanError
 from spend_sentinel.core.policy import DEFAULT_POLICY_FILENAME, Policy, load_policy
 
-from .conftest import make_change, make_plan, run_analyze, write_plan
+from .conftest import make_change, make_plan, run_analyze, run_analyze_json, write_plan
 
 
 def write_policy(tmp_path: Path, text: str, name: str = "policy.yaml") -> str:
@@ -221,8 +220,8 @@ class TestHostileYaml:
 class TestResolutionOrder:
     """--policy > ./spend-sentinel.yaml > built-in defaults (CWD-sensitive)."""
 
-    def deletions_result(self, result):
-        payload = json.loads(result.stdout)
+    @staticmethod
+    def deletions_result(payload):
         return {r["name"]: r["result"] for r in payload["policy"]["rules"]}["deletions"]
 
     @pytest.fixture()
@@ -247,9 +246,9 @@ class TestResolutionOrder:
         workdir = tmp_path / "empty-cwd"
         workdir.mkdir()
         monkeypatch.chdir(workdir)
-        result = run_analyze(runner, delete_plan)
-        assert result.exit_code == 0
-        assert self.deletions_result(result) == "warn"  # default action
+        result, payload = run_analyze_json(runner, delete_plan)
+        assert result.exit_code == 0  # WARN exits 0 by default (A6)
+        assert self.deletions_result(payload) == "warn"  # default action
 
     def test_r13_cwd_file_auto_picked_up(self, runner, delete_plan, tmp_path,
                                          monkeypatch):
@@ -259,9 +258,10 @@ class TestResolutionOrder:
             "rules:\n  deletions:\n    action: block\n"
         )
         monkeypatch.chdir(workdir)
-        result = run_analyze(runner, delete_plan)
-        assert result.exit_code == 0
-        assert self.deletions_result(result) == "block"
+        result, payload = run_analyze_json(runner, delete_plan)
+        assert result.exit_code == 1  # R18: the CWD policy's block now gates the exit
+        assert payload["verdict"] == "BLOCK"
+        assert self.deletions_result(payload) == "block"
 
     def test_r13_policy_flag_wins_over_cwd_file(self, runner, delete_plan, tmp_path,
                                                 monkeypatch):
@@ -274,9 +274,9 @@ class TestResolutionOrder:
             tmp_path, "rules:\n  deletions:\n    action: ignore\n", name="flag.yaml"
         )
         monkeypatch.chdir(workdir)
-        result = run_analyze(runner, delete_plan, "--policy", flag_policy)
+        result, payload = run_analyze_json(runner, delete_plan, "--policy", flag_policy)
         assert result.exit_code == 0
-        assert self.deletions_result(result) == "pass"  # ignore renders pass (A-i26)
+        assert self.deletions_result(payload) == "pass"  # ignore renders pass (A-i26)
 
     def test_r13_broken_cwd_file_fails_run(self, runner, delete_plan, tmp_path,
                                            monkeypatch):

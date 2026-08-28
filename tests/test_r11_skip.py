@@ -18,7 +18,14 @@ import pytest
 from spend_sentinel.core.drift import skipped_report
 from spend_sentinel.core.models import DriftStatus
 
-from .conftest import make_change, make_plan, make_state_resource, run_analyze, write_plan
+from .conftest import (
+    make_change,
+    make_plan,
+    make_state_resource,
+    run_analyze,
+    run_analyze_json,
+    write_plan,
+)
 
 BOTO3_INSTALLED = importlib.util.find_spec("boto3") is not None
 
@@ -54,9 +61,9 @@ class TestSkippedStatus:
         assert report.drifts == report.skipped == report.errors == ()
 
     def test_r11_cli_no_state_drift_skipped(self, runner, plan_path):
-        result = run_analyze(runner, plan_path)
+        result, payload = run_analyze_json(runner, plan_path)
         assert result.exit_code == 0
-        drift = json.loads(result.stdout)["drift"]
+        drift = payload["drift"]
         assert drift == {"status": "skipped", "drifts": [], "skipped": [], "errors": []}
 
     def test_r11_cli_skip_drift_flag_wins_over_state(self, runner, plan_path, tmp_path):
@@ -68,20 +75,22 @@ class TestSkippedStatus:
                                                     "instance_type": "t3.micro",
                                                     "tags": {}})]),
         )
-        result = run_analyze(runner, plan_path, "--state", state_path, "--skip-drift")
+        result, payload = run_analyze_json(
+            runner, plan_path, "--state", state_path, "--skip-drift"
+        )
         assert result.exit_code == 0
-        assert json.loads(result.stdout)["drift"]["status"] == "skipped"
+        assert payload["drift"]["status"] == "skipped"
 
     def test_r11_skip_drift_does_not_even_read_the_state_file(self, runner, plan_path,
                                                               tmp_path):
         """--skip-drift means no drift work at all: a nonexistent state path
         must not fail the run."""
-        result = run_analyze(
+        result, payload = run_analyze_json(
             runner, plan_path, "--state", str(tmp_path / "no-such-state.json"),
             "--skip-drift",
         )
         assert result.exit_code == 0
-        assert json.loads(result.stdout)["drift"]["status"] == "skipped"
+        assert payload["drift"]["status"] == "skipped"
 
 
 class TestNoAwsCallPath:
@@ -140,14 +149,15 @@ class TestWithoutBoto3:
         assert importlib.util.find_spec("boto3") is None
 
     @pytest.mark.skipif(BOTO3_INSTALLED, reason="boto3 is installed in this environment")
-    def test_r21_skip_drift_works_without_boto3_in_subprocess(self, plan_path):
+    def test_r21_skip_drift_works_without_boto3_in_subprocess(self, plan_path, tmp_path):
+        out = tmp_path / "v.json"
         proc = subprocess.run(
             [sys.executable, "-m", "spend_sentinel.cli", "analyze", "--plan", plan_path,
-             "--skip-drift"],
+             "--skip-drift", "--out-json", str(out)],
             capture_output=True, text=True, timeout=60,
         )
         assert proc.returncode == 0
-        assert json.loads(proc.stdout)["drift"]["status"] == "skipped"
+        assert json.loads(out.read_text())["drift"]["status"] == "skipped"
 
     @pytest.mark.skipif(BOTO3_INSTALLED, reason="boto3 is installed in this environment")
     def test_r11_state_without_boto3_fails_with_one_line_diagnostic(self, plan_path,

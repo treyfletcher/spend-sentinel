@@ -21,7 +21,13 @@ from spend_sentinel.core.models import Plan, UnpricedReason
 from spend_sentinel.core.plan import load_plan
 from spend_sentinel.pricing.snapshot import SnapshotPricingSource
 
-from .conftest import fixture_path, make_change, make_plan, run_analyze, write_plan
+from .conftest import (
+    fixture_path,
+    make_change,
+    make_plan,
+    run_analyze_json,
+    write_plan,
+)
 
 
 @pytest.fixture(scope="module")
@@ -176,9 +182,11 @@ class TestAc4Style:
         assert [line.address for line in report.breakdown] == ["aws_instance.priced"]
 
     def test_r7_ac4_through_cli(self, runner):
-        result = run_analyze(runner, fixture_path("mixed_unpriced.json"))
+        result, payload = run_analyze_json(runner, fixture_path("mixed_unpriced.json"))
+        # unpriced resources -> max_monthly_delta WARN (default treat_unpriced_as),
+        # and WARN still exits 0 (R18/A6)
         assert result.exit_code == 0
-        payload = json.loads(result.stdout)
+        assert payload["verdict"] == "WARN"
         assert len(payload["cost"]["unpriced"]) == 2
         reasons = {u["address"]: u["reason"] for u in payload["cost"]["unpriced"]}
         assert reasons == {
@@ -212,10 +220,10 @@ class TestHostileNumericValues:
     """Hostile JSON numbers in pricing-relevant attributes must fail closed."""
 
     @staticmethod
-    def run_cli(path: str) -> subprocess.CompletedProcess[str]:
+    def run_cli(path: str, out_json: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, "-m", "spend_sentinel.cli", "analyze",
-             "--plan", path, "--region", "us-east-1"],
+             "--plan", path, "--region", "us-east-1", "--out-json", out_json],
             capture_output=True,
             text=True,
             timeout=60,
@@ -233,10 +241,12 @@ class TestHostileNumericValues:
         )
         p = tmp_path / "nonfinite.json"
         p.write_text(payload)
-        proc = self.run_cli(str(p))
+        out_path = tmp_path / "v.json"
+        proc = self.run_cli(str(p), str(out_path))
         assert "Traceback" not in proc.stderr
+        # the unpriced resource escalates to WARN (default policy), still exit 0
         assert proc.returncode == 0
-        out = json.loads(proc.stdout)
+        out = json.loads(out_path.read_text())
         assert [u["reason"] for u in out["cost"]["unpriced"]] == ["attributes_unknown"]
         assert out["cost"]["breakdown"] == []
         assert out["cost"]["monthly_delta_usd"] == "0.00"
@@ -313,7 +323,8 @@ class TestHostileNumericValues:
                 provider_region="us-east-1",
             ),
         )
-        result = run_analyze(runner, path)
-        assert result.exit_code == 0
-        payload = json.loads(result.stdout)
+        result, payload = run_analyze_json(runner, path)
+        # the astronomic delta breaches the $200 default ceiling -> BLOCK, exit 1
+        assert result.exit_code == 1
+        assert payload["verdict"] == "BLOCK"
         assert payload["cost"]["monthly_delta_usd"] == str(expected)

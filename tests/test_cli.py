@@ -1,5 +1,6 @@
-"""CLI-level contract tests via subprocess: exit codes 0/2, JSON on stdout
-only on success, one-line stderr diagnostics, determinism (R1-R3 surface).
+"""CLI-level contract tests via subprocess: exit codes, Markdown on stdout by
+default (R19/R20), machine-readable JSON via --out-json, one-line stderr
+diagnostics, determinism.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import pytest
 
 from .conftest import fixture_path
 
+R19_TOP_LEVEL_KEYS = {"verdict", "summary", "cost", "drift", "policy", "meta"}
+
 
 def run_module(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -24,12 +27,24 @@ def run_module(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 class TestExitCodesAndStreams:
-    def test_cli_success_json_stdout_empty_stderr_exit_0(self):
+    def test_cli_success_markdown_stdout_empty_stderr_exit_0(self):
+        """R19: with no output flags, stdout carries the Markdown report."""
         proc = run_module("analyze", "--plan", fixture_path("create_single_instance.json"))
         assert proc.returncode == 0
         assert proc.stderr == ""
-        payload = json.loads(proc.stdout)
-        assert set(payload) == {"summary", "resources", "cost", "drift", "policy"}
+        assert proc.stdout.startswith("Verdict: PASS\n")
+
+    def test_cli_out_json_writes_r19_keys_quiet_stdout(self, tmp_path):
+        """R19 key set via --out-json; A-i30: stdout is quiet with an output flag."""
+        out = tmp_path / "v.json"
+        proc = run_module(
+            "analyze", "--plan", fixture_path("create_single_instance.json"),
+            "--out-json", str(out),
+        )
+        assert proc.returncode == 0
+        assert proc.stdout == ""
+        payload = json.loads(out.read_text())
+        assert set(payload) == R19_TOP_LEVEL_KEYS
         # no --state: drift must report skipped (R11)
         assert payload["drift"]["status"] == "skipped"
 
@@ -65,12 +80,16 @@ class TestConsoleScript:
         shutil.which("spend-sentinel") is None,
         reason="spend-sentinel console script not on PATH",
     )
-    def test_console_script_entry_point_works(self):
+    def test_console_script_entry_point_works(self, tmp_path):
+        out = tmp_path / "v.json"
         proc = subprocess.run(
-            ["spend-sentinel", "analyze", "--plan", fixture_path("empty_changes.json")],
+            ["spend-sentinel", "analyze", "--plan", fixture_path("empty_changes.json"),
+             "--out-json", str(out)],
             capture_output=True,
             text=True,
             timeout=60,
         )
         assert proc.returncode == 0
-        assert json.loads(proc.stdout)["summary"]["changed"] == 0
+        payload = json.loads(out.read_text())
+        assert payload["verdict"] == "PASS"
+        assert payload["summary"]["changed"] == 0

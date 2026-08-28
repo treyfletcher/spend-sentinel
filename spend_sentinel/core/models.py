@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -116,6 +116,9 @@ class CostLine(BaseModel):
     type: str
     action: ActionClass
     monthly_delta_usd: Decimal
+    #: v1.1 (R29): which source priced this resource; None on the default
+    #: snapshot-only path and omitted from JSON when None (R22 byte-identity).
+    price_source: Literal["live", "snapshot", "mixed"] | None = None
 
 
 class UnpricedResource(BaseModel):
@@ -322,6 +325,9 @@ class VerdictMeta(BaseModel):
     pricing_snapshot_version: str
     pricing_snapshot_date: str
     region: str
+    #: v1.1 (R30): present only when --live-pricing was requested; None keeps
+    #: the default path's JSON/Markdown byte-identical to v1 (R22).
+    live_pricing: LivePricingReport | None = None
 
 
 class Verdict(BaseModel):
@@ -335,3 +341,44 @@ class Verdict(BaseModel):
     drift: DriftReport
     policy: tuple[RuleResult, ...]
     meta: VerdictMeta
+
+
+# --- Live pricing meta (v1.1, R27/R30) ---
+
+
+class LivePricingStatus(StrEnum):
+    """Run-level live pricing status (R30)."""
+
+    OK = "ok"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
+
+
+class LivePricingWarning(BaseModel):
+    """One degradation record: an R27 reason plus an internal-key detail.
+
+    ``detail`` is built from spend-sentinel's own enums/keys only (e.g.
+    ``aws_ebs_volume/gp3``) — never from response text (R31).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    reason: str
+    detail: str = ""
+
+
+class LivePricingReport(BaseModel):
+    """The verdict-meta ``live_pricing`` object (R30), built by the source."""
+
+    model_config = ConfigDict(frozen=True)
+
+    requested: bool
+    status: LivePricingStatus
+    endpoint_region: str
+    lookups_live: int = Field(ge=0)
+    lookups_snapshot_fallback: int = Field(ge=0)
+    lookups_miss: int = Field(ge=0)
+    #: (earliest, latest) publicationDate of accepted price-list items; None
+    #: when no live rate was accepted. No wall-clock values (golden-testable).
+    publication_dates: tuple[str, str] | None = None
+    warnings: tuple[LivePricingWarning, ...] = ()

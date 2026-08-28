@@ -26,7 +26,8 @@ determinism (Modularity notes).
         "address": "aws_instance.web",
         "type": "aws_instance",
         "action": "create | delete | update | replace",
-        "monthly_delta_usd": "7.59"
+        "monthly_delta_usd": "7.59",
+        "price_source": "live | snapshot | mixed  (v1.1: present only under --live-pricing)"
       }
     ],
     "unpriced": [
@@ -75,7 +76,15 @@ determinism (Modularity notes).
     "tool_version": "0.1.0",
     "pricing_snapshot_version": "2026.08.0",
     "pricing_snapshot_date": "2026-08-27",
-    "region": "us-east-1"
+    "region": "us-east-1",
+    "live_pricing": {
+      "requested": true,
+      "status": "ok | degraded | unavailable",
+      "endpoint_region": "us-east-1",
+      "lookups": { "live": 0, "snapshot_fallback": 0, "miss": 0 },
+      "publication_dates": { "earliest": "2026-08-20T00:00:00Z", "latest": "2026-08-27T00:00:00Z" },
+      "warnings": [ { "reason": "no_match", "detail": "aws_ebs_volume/gp3" } ]
+    }
   }
 }
 ```
@@ -97,3 +106,25 @@ Notes:
   read-error exit 2 (A5).
 - All lists preserve evaluation order and are complete in JSON (only the
   Markdown report truncates long lists, R20).
+
+v1.1 additions (present **only** when `--live-pricing` was passed; without the
+flag the document is byte-identical to v1):
+
+- `cost.breakdown[].price_source`: `live` (all of the resource's rate lookups
+  came from the Pricing API), `snapshot` (all fell back), or `mixed` (e.g. an
+  RDS instance rate live, storage rate fallback). Omitted entirely on default
+  runs.
+- `meta.live_pricing.status`: `ok` — every priced lookup was live;
+  `unavailable` — a run-level failure (`boto3_missing`, `client_init_error`,
+  `unsupported_region`) disabled the API; else `degraded`.
+- `meta.live_pricing.lookups`: per-resolution counts (not unique keys).
+- `meta.live_pricing.publication_dates`: earliest/latest `publicationDate`
+  of accepted price-list items, or `null` when no live rate was accepted.
+  No wall-clock timestamps appear anywhere (deterministic outputs).
+- `meta.live_pricing.warnings[]`: degradation records; `reason` is one of
+  `boto3_missing`, `client_init_error`, `api_error`, `timeout`,
+  `budget_exhausted`, `unsupported_region`, `unmapped_value`, `no_match`,
+  `ambiguous`, `parse_error`, `pagination_overflow`, `oversize_response`;
+  `detail` names only spend-sentinel's own service/price keys.
+- Live-pricing degradation never changes the exit code (it stays
+  verdict-driven; unlike drift read errors, no exit 2).

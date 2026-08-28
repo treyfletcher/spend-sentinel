@@ -1,0 +1,6 @@
+{
+  "FormatVersion": "aws_v1",
+  "PriceList": [
+    "{\"product\": {\"productFamily\": \"Database Instance\", \"attributes\": {\"servicecode\": \"AmazonRDS\", \"instanceType\": \"db.t3.micro\", \"databaseEngine\": \"PostgreSQL\", \"deploymentOption\": \"Single-AZ\", \"location\": \"US East (N. Virginia)\", \"usagetype\": \"InstanceUsage:db.t3.micro\", \"productFamily\": \"Database Instance\"}, \"sku\": \"SKU38621696\"}, \"serviceCode\": \"AmazonRDS\", \"terms\": {\"OnDemand\": {\"OFFER0.JRTCKXETXF\": {\"offerTermCode\": \"JRTCKXETXF\", \"priceDimensions\": {\"OFFER0.JRTCKXETXF.6YS6EN2CT7\": {\"rateCode\": \"OFFER0.JRTCKXETXF.6YS6EN2CT7\", \"description\": \"on demand\", \"unit\": \"Hrs\", \"pricePerUnit\": {\"USD\": \"0.0190000000\"}}}, \"termAttributes\": {}}}, \"Reserved\": {\"RES1.XYZ\": {\"priceDimensions\": {\"RES1.XYZ.1\": {\"unit\": \"Quantity\", \"pricePerUnit\": {\"USD\": \"9999.0\"}}}}}}, \"version\": \"20260820000000\", \"publicationDate\": \"2026-08-20T00:00:00Z\"}"
+  ]
+}

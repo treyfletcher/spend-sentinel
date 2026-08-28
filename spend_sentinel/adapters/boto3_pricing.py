@@ -57,7 +57,7 @@ class Boto3PricingClient:
                 (e.g. no resolvable credentials configuration).
         """
         region = endpoint_region or os.environ.get(_ENDPOINT_ENV_VAR) or _DEFAULT_ENDPOINT_REGION
-        if not _REGION_TOKEN.match(region):
+        if not _REGION_TOKEN.fullmatch(region):
             raise PricingClientUnavailable(LiveFailureReason.CLIENT_INIT_ERROR)
 
         try:

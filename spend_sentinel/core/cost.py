@@ -20,7 +20,7 @@ protocol — never on a concrete adapter.
 from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Any
+from typing import Any, Literal
 
 from spend_sentinel.core.models import (
     ActionClass,
@@ -58,6 +58,11 @@ def estimate(plan: Plan, pricing: PricingSource, region: str) -> CostReport:
     breakdown: list[CostLine] = []
     unpriced: list[UnpricedResource] = []
     total = _ZERO
+    # R29 (v1.1) attribution hook: only a live source has drain_lookups; on
+    # the default snapshot path this stays None and nothing below changes.
+    drain = getattr(pricing, "drain_lookups", None)
+    if drain is not None:
+        drain()  # discard any stale lookups from before this estimate
 
     for rc in plan.resource_changes:
         action = classify_actions(rc.change.actions)
@@ -74,12 +79,21 @@ def estimate(plan: Plan, pricing: PricingSource, region: str) -> CostReport:
             delta = _delta(rc.type, action, rc.change.before, rc.change.after, pricing, region)
         except _Unpriced as exc:
             unpriced.append(UnpricedResource(address=rc.address, type=rc.type, reason=exc.reason))
+            if drain is not None:
+                drain()  # unpriced attempt: never leak lookups across resources
             continue
         delta = delta.quantize(_CENTS, rounding=ROUND_HALF_UP)
         if delta == 0:
             delta = _ZERO  # normalize -0.00
+        price_source = _attribution(drain() if drain is not None else [])
         breakdown.append(
-            CostLine(address=rc.address, type=rc.type, action=action, monthly_delta_usd=delta)
+            CostLine(
+                address=rc.address,
+                type=rc.type,
+                action=action,
+                monthly_delta_usd=delta,
+                price_source=price_source,
+            )
         )
         total += delta
 
@@ -90,6 +104,20 @@ def estimate(plan: Plan, pricing: PricingSource, region: str) -> CostReport:
         breakdown=tuple(breakdown),
         unpriced=tuple(unpriced),
     )
+
+
+def _attribution(
+    lookups: list[tuple[str, str, str]],
+) -> Literal["live", "snapshot", "mixed"] | None:
+    """R29: 'live' if all lookups live, 'snapshot' if all snapshot, else 'mixed'."""
+    sources = {source for _service, _key, source in lookups}
+    if sources == {"live"}:
+        return "live"
+    if sources == {"snapshot"}:
+        return "snapshot"
+    if sources:
+        return "mixed"
+    return None
 
 
 def _delta(

@@ -6,6 +6,9 @@ Increment 2 (R4-R8) adds ``--region`` and a ``cost`` section (monthly delta,
 per-resource breakdown, unpriced list) priced from the bundled snapshot.
 Increment 3 (R9-R12) adds ``--state``/``--skip-drift`` and a ``drift`` section;
 the live boto3 adapter is imported only when drift will actually run (R11/R21).
+Increment 4 (R13-R17) adds ``--policy`` and a ``policy`` section with the four
+rule results; these are informational until the R18 verdict/exit-code logic
+lands (a policy BLOCK does not yet change the exit code).
 Exit codes: 0 on success, 2 on ingestion/region errors (R2, R8) and on AWS
 read errors during drift (R12; the "exit 1 beats 2" precedence lands with the
 R18 verdict logic, since policy rules do not exist yet), with a one-line
@@ -17,6 +20,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any, NoReturn
 
 import click
@@ -31,6 +35,7 @@ from spend_sentinel.core.plan import (
     resolve_plan_region,
     summarize_plan,
 )
+from spend_sentinel.core.policy import DEFAULT_POLICY_FILENAME, evaluate, load_policy
 from spend_sentinel.core.state import load_state
 from spend_sentinel.pricing.snapshot import SnapshotError, SnapshotPricingSource
 
@@ -84,11 +89,20 @@ def main() -> None:
     default=False,
     help="Skip drift detection even when --state is given; no AWS call is made.",
 )
+@click.option(
+    "--policy",
+    "policy_flag",
+    default=None,
+    type=str,
+    help="Path to a policy YAML file (default: ./spend-sentinel.yaml if present, "
+    "else built-in defaults).",
+)
 def analyze(
     plan_path: str,
     region_flag: str | None,
     state_path: str | None,
     skip_drift: bool,
+    policy_flag: str | None,
 ) -> None:
     """Analyze a Terraform plan: classify changes and estimate the monthly cost delta."""
     try:
@@ -96,6 +110,17 @@ def analyze(
         summary, resources = summarize_plan(plan)
     except PlanError as exc:
         _fail(f"{plan_path}: {exc}")
+
+    # Policy resolution (R13): --policy wins, else ./spend-sentinel.yaml if
+    # present, else built-in defaults. Loaded early so a bad policy fails fast
+    # (exit 2, no output produced - AC10).
+    policy_path: str | None = policy_flag
+    if policy_path is None and Path(DEFAULT_POLICY_FILENAME).is_file():
+        policy_path = DEFAULT_POLICY_FILENAME
+    try:
+        policy = load_policy(policy_path)
+    except PlanError as exc:
+        _fail(f"{policy_path}: {exc}")
 
     try:
         pricing = SnapshotPricingSource()
@@ -165,6 +190,12 @@ def analyze(
             ],
         },
         "drift": _drift_section(drift),
+        "policy": {
+            "rules": [
+                {"name": r.name, "result": r.result.value, "message": r.message}
+                for r in evaluate(policy, cost, drift, plan)
+            ]
+        },
     }
     click.echo(json.dumps(output, indent=2))
 

@@ -278,3 +278,25 @@ class DriftReport(BaseModel):
     drifts: tuple[Drift, ...] = ()
     skipped: tuple[DriftSkipped, ...] = ()
     errors: tuple[DriftError, ...] = ()
+
+
+# --- Policy rule results (R17) ---
+
+
+class RuleOutcome(StrEnum):
+    """Result of one policy rule evaluation (R17)."""
+
+    PASS = "pass"
+    WARN = "warn"
+    BLOCK = "block"
+    SKIPPED = "skipped"
+
+
+class RuleResult(BaseModel):
+    """One rule evaluation: name, result, human-readable message (R17)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    result: RuleOutcome
+    message: str

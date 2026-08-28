@@ -1,0 +1,6 @@
+{
+  "FormatVersion": "aws_v1",
+  "PriceList": [
+    "{\"product\": {\"productFamily\": \"Storage\", \"attributes\": {\"servicecode\": \"AmazonEC2\", \"volumeApiName\": \"gp3\", \"location\": \"US East (N. Virginia)\", \"productFamily\": \"Storage\", \"usagetype\": \"EBS:VolumeUsage.gp3\"}, \"sku\": \"SKU85781544\"}, \"serviceCode\": \"AmazonEC2\", \"terms\": {\"OnDemand\": {\"OFFER0.JRTCKXETXF\": {\"offerTermCode\": \"JRTCKXETXF\", \"priceDimensions\": {\"OFFER0.JRTCKXETXF.6YS6EN2CT7\": {\"rateCode\": \"OFFER0.JRTCKXETXF.6YS6EN2CT7\", \"description\": \"on demand\", \"unit\": \"GB-Mo\", \"pricePerUnit\": {\"USD\": \"0.0850000000\"}}}, \"termAttributes\": {}}}, \"Reserved\": {\"RES1.XYZ\": {\"priceDimensions\": {\"RES1.XYZ.1\": {\"unit\": \"Quantity\", \"pricePerUnit\": {\"USD\": \"9999.0\"}}}}}}, \"version\": \"20260820000000\", \"publicationDate\": \"2026-08-22T00:00:00Z\"}"
+  ]
+}

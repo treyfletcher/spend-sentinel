@@ -1,0 +1,6 @@
+{
+  "FormatVersion": "aws_v1",
+  "PriceList": [
+    "{\"product\": {\"productFamily\": \"Compute Instance\", \"attributes\": {\"servicecode\": \"AmazonEC2\", \"instanceType\": \"t3.micro\", \"location\": \"US East (N. Virginia)\", \"operatingSystem\": \"Linux\", \"tenancy\": \"Shared\", \"preInstalledSw\": \"NA\", \"capacitystatus\": \"Used\", \"usagetype\": \"BoxUsage:t3.micro\", \"productFamily\": \"Compute Instance\"}, \"sku\": \"SKU4209248\"}, \"serviceCode\": \"AmazonEC2\", \"terms\": {\"OnDemand\": {\"OFFER0.JRTCKXETXF\": {\"offerTermCode\": \"JRTCKXETXF\", \"priceDimensions\": {\"OFFER0.JRTCKXETXF.6YS6EN2CT7\": {\"rateCode\": \"OFFER0.JRTCKXETXF.6YS6EN2CT7\", \"description\": \"on demand\", \"unit\": \"Hrs\", \"pricePerUnit\": {\"USD\": \"0.0110000000\"}}}, \"termAttributes\": {}}}, \"Reserved\": {\"RES1.XYZ\": {\"priceDimensions\": {\"RES1.XYZ.1\": {\"unit\": \"Quantity\", \"pricePerUnit\": {\"USD\": \"9999.0\"}}}}}}, \"version\": \"20260820000000\", \"publicationDate\": \"2026-08-25T02:11:00Z\"}"
+  ]
+}

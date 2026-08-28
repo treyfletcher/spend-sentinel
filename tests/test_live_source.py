@@ -549,15 +549,9 @@ class TestReportSemantics:
 
 
 class TestNeverRaisesThroughEstimate:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG-6 (see docs/test-reports/feature-live-pricing-c2.md): an "
-        "untyped exception from the transport escapes LivePricingSource.get_rate "
-        "(docstring: 'never raises') and kills estimate(), violating R27's "
-        "degradation-never-fails-the-run contract; needs a defensive catch-all "
-        "mapping to api_error, mirroring drift's A-i18 posture",
-    )
     def test_bug6_untyped_transport_exception_degrades_not_raises(self):
+        """BUG-6 (fixed): a rogue client's untyped exception degrades to
+        snapshot fallback with reason api_error — never a crashed run (R27)."""
         class RogueClient:
             def get_products(self, service_code, filters, next_token):
                 raise ValueError("untyped transport explosion")

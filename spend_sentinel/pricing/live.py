@@ -485,6 +485,12 @@ def resolve_live_rate(
         return LookupOutcome(failure=exc.reason)
     except PricingApiError as exc:
         return LookupOutcome(failure=exc.reason)
+    except Exception:  # noqa: BLE001 - BUG-6 defensive catch-all
+        # A transport that violates the protocol by raising an untyped
+        # exception must degrade like any other failure, never crash the run
+        # (R27; mirrors drift's A-i18 posture). No exception detail is kept —
+        # it could carry response or credential text.
+        return LookupOutcome(failure=LiveFailureReason.API_ERROR)
     return LookupOutcome(rate=live.rate, publication_dates=live.publication_dates)
 
 

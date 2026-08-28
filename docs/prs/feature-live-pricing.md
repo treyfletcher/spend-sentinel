@@ -84,3 +84,70 @@ budget: 4 keys, 16 s/call → exactly 2 calls, rest `budget_exhausted`;
 `import spend_sentinel.pricing.live` leaves `boto3` out of `sys.modules`;
 boto3-less venv: constructor → `boto3_missing`, invalid endpoint env →
 `client_init_error`. ruff + `python3 -m mypy` clean (23 files).
+
+## Chunk 2 — integration (T12 completion, R24/R27/R29/R30-model)
+
+### What landed
+
+- `pricing/live.py::LivePricingSource` — implements the existing
+  `PricingSource` protocol wrapping an injected `PricingApiClient` and the
+  snapshot fallback (typed as `PricingSource`, so any source can back it):
+  R24 resolution order; run-level failures disable the API for the rest of
+  the run after one recorded warning; per-call lookup counters and
+  `publicationDate` range capture; warning de-dup by `(reason, detail)` with
+  details from internal keys only; `drain_lookups()` attribution;
+  `report() -> LivePricingReport`. Constructible with `client=None` +
+  `disabled_reason` (chunk 3 uses this for `boto3_missing`/
+  `client_init_error`).
+- `core/models.py`: `CostLine.price_source: Literal["live","snapshot",
+  "mixed"] | None = None`; `LivePricingStatus`, `LivePricingWarning`,
+  `LivePricingReport` (`requested`, `status`, `endpoint_region`,
+  `lookups_live/snapshot_fallback/miss`, `publication_dates: (earliest,
+  latest) | None`, `warnings`).
+- `core/cost.py::estimate` — the sanctioned R29 hook: `getattr`-discovered
+  `drain_lookups`, drained before the loop, after unpriced attempts, and
+  after each priced resource to set `price_source`.
+
+### Chunk-3 consumer surface
+
+- Wiring: build `Boto3PricingClient` (guarded; on `PricingClientUnavailable`
+  construct `LivePricingSource(None, snapshot, disabled_reason=exc.reason)`),
+  else `LivePricingSource(client, snapshot, endpoint_region=...)`; pass it to
+  the existing `estimate()` unchanged.
+- After estimating: `source.report()` returns the `LivePricingReport` for
+  `meta.live_pricing` (JSON) and the Markdown summary line; its `warnings`
+  drive the one-line-per-distinct-reason stderr output (R27 — printing is
+  chunk 3's job, the de-duped list is ready).
+- `CostLine.price_source` feeds the Markdown `Source` column and the JSON
+  field (serialize only when not `None` / only when `--live-pricing`).
+
+### Chunk-2 assumptions (flagged)
+
+- **A-c6 (publication_dates shape)**: R30 writes `publication_dates:
+  {"<earliest>", "<latest>"} | null` — modeled as an ordered pair
+  `(earliest, latest)` (equal when one date), `None` when no live rate was
+  accepted.
+- **A-c7 (status rule)**: `ok` requires zero warnings AND zero
+  fallback/miss lookups; any degradation — including a key that missed in
+  both sources — makes the run `degraded` (spec: "ok when every priced
+  lookup was live").
+- **A-c8 (warning granularity)**: key-level failures record one warning per
+  distinct `(reason, service_key/price_key)`; run-level reasons once with
+  empty detail. Stderr in chunk 3 collapses further to one line per
+  distinct reason (R27).
+- **A-c9 (counters count calls, not keys)**: `lookups.*` counts `get_rate`
+  resolutions (AC14's `lookups.live == 2` semantics); the cache still
+  guarantees one API query per unique key.
+
+### Chunk-2 smoke results
+
+Mixed 5-resource run: two t3.micro live (8.76 = 0.0120 × 730, one API call
+for both), gp3 `no_match` → snapshot 0.80, Multi-AZ RDS = exactly
+2 × live Single-AZ rate × 730 + snapshot storage → `mixed` (128.30), unknown
+instance type missing in both → R7 `unknown_price_key`; report: lookups
+3/2/1, `degraded`, date range spans fixtures, warnings name internal keys
+only, 5 calls for 6 lookups; `boto3_missing` construction → all `snapshot`,
+`unavailable`, single warning; unknown region on first `get_rate` → run
+disabled with `unsupported_region`; snapshot-only `estimate` leaves every
+`price_source` `None`; default import graph never loads `pricing.live`;
+full v1 suite 458 passed; ruff + `python3 -m mypy` clean.

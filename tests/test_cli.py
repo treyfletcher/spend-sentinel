@@ -29,7 +29,7 @@ class TestExitCodesAndStreams:
         assert proc.returncode == 0
         assert proc.stderr == ""
         payload = json.loads(proc.stdout)
-        assert set(payload) == {"summary", "resources", "cost", "drift"}
+        assert set(payload) == {"summary", "resources", "cost", "drift", "policy"}
         # no --state: drift must report skipped (R11)
         assert payload["drift"]["status"] == "skipped"
 

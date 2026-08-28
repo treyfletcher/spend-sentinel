@@ -36,6 +36,17 @@ READ_TIMEOUT_SECONDS = 10
 MAX_RETRIES = 2
 
 
+def resolve_endpoint_region() -> str:
+    """The endpoint region this process would use (default or env override).
+
+    Pure env logic for reporting/wiring — needs no boto3. An override that
+    fails the ``^[a-z0-9-]{1,32}$`` token check is reported as ``"invalid"``
+    (its raw value never reaches boto3 or any output).
+    """
+    candidate = os.environ.get(_ENDPOINT_ENV_VAR) or _DEFAULT_ENDPOINT_REGION
+    return candidate if _REGION_TOKEN.fullmatch(candidate) else "invalid"
+
+
 class PricingClientUnavailable(Exception):
     """The live pricing client cannot be constructed (run-level failure, R27)."""
 
@@ -57,7 +68,7 @@ class Boto3PricingClient:
                 (e.g. no resolvable credentials configuration).
         """
         region = endpoint_region or os.environ.get(_ENDPOINT_ENV_VAR) or _DEFAULT_ENDPOINT_REGION
-        if not _REGION_TOKEN.match(region):
+        if not _REGION_TOKEN.fullmatch(region):
             raise PricingClientUnavailable(LiveFailureReason.CLIENT_INIT_ERROR)
 
         try:

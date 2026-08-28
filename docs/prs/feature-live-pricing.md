@@ -151,3 +151,79 @@ only, 5 calls for 6 lookups; `boto3_missing` construction → all `snapshot`,
 disabled with `unsupported_region`; snapshot-only `estimate` leaves every
 `price_source` `None`; default import graph never loads `pricing.live`;
 full v1 suite 458 passed; ruff + `python3 -m mypy` clean.
+
+## Chunk 3 — surface (T15/T16 minus tests, R22/R27/R30/R33) + BUG-5
+
+### What landed
+
+- `cli.py`: `--live-pricing` flag; guarded wiring exactly per the chunk-2
+  surface (`_make_live_pricing_source`); default path imports neither
+  `pricing.live` nor `adapters.boto3_pricing` (smoke-asserted) and its
+  outputs stay byte-identical; one stderr warning per distinct degradation
+  reason; exit codes verdict-driven under the flag (A11).
+- `adapters/boto3_pricing.py`: `resolve_endpoint_region()` (pure env
+  resolution for reporting; invalid token reported as `"invalid"`), and
+  **BUG-5 fix**: endpoint validation now `fullmatch` — `"eu-west-1\n"` no
+  longer reaches boto3 (`fix(R31)` commit).
+- `core/models.py`: `VerdictMeta.live_pricing: LivePricingReport | None`.
+- `render/jsonout.py`: `price_source` per breakdown entry and
+  `meta.live_pricing` (lookups, `publication_dates: {earliest, latest} |
+  null`, warnings) — all emitted only when present.
+- `render/markdown.py`: `Pricing: ...` summary line under the header
+  (`live (N live, M snapshot-fallback; prices published A..B)` /
+  `snapshot v… — live pricing unavailable: <reason>`) and a `Source`
+  column — only when live pricing was requested; publication dates pass
+  through the v1 escaper.
+- `docs/iam-policy-pricing.json` (exactly `pricing:GetProducts`), README
+  live-pricing section, `docs/verdict-schema.md` v1.1 fields marked
+  flag-only. CI untouched.
+
+### Behavior changes for the tester (v1.1 surface)
+
+- New flag `--live-pricing`; with it: breakdown entries gain
+  `price_source`, meta gains `live_pricing`, Markdown gains the summary
+  line + `Source` column, stderr gains warning lines on degradation.
+  Without it: zero byte changes (AC13 holds; verified by double-run cmp and
+  key-absence checks). Exit codes never differ between flag/no-flag runs
+  (A11) — degradation is warnings-only, unlike drift's exit-2 path.
+- `FixturePricingClient` + monkeypatching `cli._make_live_pricing_source`
+  (or injecting `LivePricingSource` directly) is the intended e2e seam, as
+  in AC14–AC20.
+
+### Chunk-3 assumptions (flagged)
+
+- **A-c10 (summary-line format)**: degraded runs also list `K miss` when
+  present; `ok` runs render `Pricing: live (N live; prices published …)` —
+  spec gave examples, not a grammar.
+- **A-c11 (endpoint reporting)**: an invalid
+  `SPEND_SENTINEL_PRICING_ENDPOINT_REGION` yields `client_init_error` and
+  `endpoint_region: "invalid"` in meta — the raw value is never echoed.
+- **A-c12 (warning line format)**: `spend-sentinel: warning: live pricing
+  degraded (<reason>); snapshot fallback used` — reasons only, no keys, no
+  response text; ordering follows first occurrence.
+
+### Chunk-3 smoke results
+
+Mixed fixture-wired CLI run: sources `live`/`mixed`/`snapshot` per resource,
+`status: degraded`, lookups 2/2/0, publication range spans fixtures, two
+de-duped stderr warning lines, Markdown `Source` column + summary line,
+exit 0. Snapshot-only run: byte-identical across runs, zero
+`price_source`/`live_pricing`/`Pricing:` occurrences, imports guard holds.
+`--live-pricing` with boto3 absent (real wiring): exit 0, one
+`boto3_missing` stderr line, `status: unavailable`, all-snapshot sources,
+MD shows `Pricing: snapshot … — live pricing unavailable: boto3_missing`.
+BLOCK plan exits 1 with and without the flag. BUG-5: `"eu-west-1\n"`
+override now rejected pre-boto3. ruff + `python3 -m mypy` clean; full v1
+suite 458 passed.
+
+## Overall summary (v1.1)
+
+Chunks 1–3 deliver R22–R33: a pure filter/extraction/cache/budget layer
+(`pricing/live.py`), the `FixturePricingClient` and `Boto3PricingClient`
+transports, `LivePricingSource` with total degradation and attribution, the
+sanctioned `core/cost.py` drain hook, flag wiring, renderer/meta surface,
+and docs/IAM. Owner-facing invariants held throughout: default path
+byte-identical (R22), fallback never fails a run or changes an exit code
+(R27/A11), boto3 confined to `adapters/` (R32), no response text in any
+output (R31). T8-style e2e tests remain the tester's (AC13–AC21 seams are
+in place).

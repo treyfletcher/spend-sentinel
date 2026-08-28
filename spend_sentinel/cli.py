@@ -1,34 +1,33 @@
 """spend-sentinel CLI (thin wiring only; business logic lives in ``core``).
 
-Increment 1 (R1-R3): ``spend-sentinel analyze --plan <path>`` loads and
-classifies a Terraform plan and prints a minimal JSON summary to stdout.
-Increment 2 (R4-R8) adds ``--region`` and a ``cost`` section (monthly delta,
-per-resource breakdown, unpriced list) priced from the bundled snapshot.
-Increment 3 (R9-R12) adds ``--state``/``--skip-drift`` and a ``drift`` section;
-the live boto3 adapter is imported only when drift will actually run (R11/R21).
-Increment 4 (R13-R17) adds ``--policy`` and a ``policy`` section with the four
-rule results; these are informational until the R18 verdict/exit-code logic
-lands (a policy BLOCK does not yet change the exit code).
-Exit codes: 0 on success, 2 on ingestion/region errors (R2, R8) and on AWS
-read errors during drift (R12; the "exit 1 beats 2" precedence lands with the
-R18 verdict logic, since policy rules do not exist yet), with a one-line
-stderr diagnostic — no traceback, no file contents. The full verdict structure
-(R19) arrives in a later increment.
+``spend-sentinel analyze`` loads a Terraform plan (``terraform show -json``),
+classifies its changes (R1-R3), prices them from the bundled snapshot
+(R4-R8), optionally detects drift against live AWS (R9-R12), evaluates the
+policy gates (R13-R17), and emits the verdict (R18-R20): Markdown to stdout by
+default, or to files via ``--out-json``/``--out-md``.
+
+Exit codes (R18, A5): 0 for PASS and (by default) WARN; 1 for BLOCK, and for
+WARN with ``--fail-on-warn``; 2 for usage/runtime errors (R2/R8/R13 ingestion
+failures — which write no output files — and R12 drift read errors, which
+still produce the verdict but are outranked by an exit 1). Diagnostics are one
+sanitized line on stderr — no tracebacks, no file contents.
+
+The live boto3 adapter is imported only when drift will actually run
+(R11/R21); this module is the only production wiring point (Modularity notes).
 """
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import NoReturn
 
 import click
 
 from spend_sentinel import __version__
 from spend_sentinel.core.cost import estimate
 from spend_sentinel.core.drift import AwsReader, detect, skipped_report
-from spend_sentinel.core.models import DriftReport, DriftStatus
+from spend_sentinel.core.models import DriftStatus, VerdictMeta
 from spend_sentinel.core.plan import (
     PlanError,
     load_plan,
@@ -37,11 +36,14 @@ from spend_sentinel.core.plan import (
 )
 from spend_sentinel.core.policy import DEFAULT_POLICY_FILENAME, evaluate, load_policy
 from spend_sentinel.core.state import load_state
+from spend_sentinel.core.verdict import combine, exit_code
 from spend_sentinel.pricing.snapshot import SnapshotError, SnapshotPricingSource
+from spend_sentinel.render.jsonout import render_json
+from spend_sentinel.render.markdown import render_md
 
 
 def _fail(message: str) -> NoReturn:
-    """One-line diagnostic on stderr, exit 2 (R2/R8). Never echoes file contents.
+    """One-line diagnostic on stderr, exit 2 (R2/R8/R13). Never echoes file contents.
 
     Plan-derived identifiers (resource addresses, provider_config keys, a
     plan-constant region) can reach diagnostics per A-i5 and are
@@ -61,6 +63,7 @@ def main() -> None:
 
 
 @main.command()
+@click.version_option(version=__version__, prog_name="spend-sentinel")
 @click.option(
     "--plan",
     "plan_path",
@@ -97,23 +100,47 @@ def main() -> None:
     help="Path to a policy YAML file (default: ./spend-sentinel.yaml if present, "
     "else built-in defaults).",
 )
+@click.option(
+    "--out-json",
+    "out_json",
+    default=None,
+    type=str,
+    help="Write the JSON verdict to this path (schema: docs/verdict-schema.md).",
+)
+@click.option(
+    "--out-md",
+    "out_md",
+    default=None,
+    type=str,
+    help="Write the Markdown report to this path. With neither --out-json nor "
+    "--out-md, the Markdown goes to stdout.",
+)
+@click.option(
+    "--fail-on-warn",
+    is_flag=True,
+    default=False,
+    help="Exit 1 on a WARN verdict (default: WARN exits 0).",
+)
 def analyze(
     plan_path: str,
     region_flag: str | None,
     state_path: str | None,
     skip_drift: bool,
     policy_flag: str | None,
+    out_json: str | None,
+    out_md: str | None,
+    fail_on_warn: bool,
 ) -> None:
-    """Analyze a Terraform plan: classify changes and estimate the monthly cost delta."""
+    """Analyze a Terraform plan: cost delta, drift, policy gates, verdict."""
     try:
         plan = load_plan(plan_path)
-        summary, resources = summarize_plan(plan)
+        summary, _resources = summarize_plan(plan)
     except PlanError as exc:
         _fail(f"{plan_path}: {exc}")
 
     # Policy resolution (R13): --policy wins, else ./spend-sentinel.yaml if
     # present, else built-in defaults. Loaded early so a bad policy fails fast
-    # (exit 2, no output produced - AC10).
+    # (exit 2, no output files written - AC10).
     policy_path: str | None = policy_flag
     if policy_path is None and Path(DEFAULT_POLICY_FILENAME).is_file():
         policy_path = DEFAULT_POLICY_FILENAME
@@ -151,66 +178,49 @@ def analyze(
         reader = _make_live_reader(region)
         drift = detect(state, reader)
 
-    output: dict[str, Any] = {
-        "summary": {
-            "created": summary.created,
-            "deleted": summary.deleted,
-            "updated": summary.updated,
-            "replaced": summary.replaced,
-            "changed": summary.changed,
-        },
-        "resources": [
-            {
-                "address": resource.address,
-                "type": resource.type,
-                "provider": resource.provider,
-                "action": resource.action.value,
-            }
-            for resource in resources
-        ],
-        "cost": {
-            "region": region,
-            "monthly_delta_usd": str(cost.monthly_delta_usd),
-            "breakdown": [
-                {
-                    "address": line.address,
-                    "type": line.type,
-                    "action": line.action.value,
-                    "monthly_delta_usd": str(line.monthly_delta_usd),
-                }
-                for line in cost.breakdown
-            ],
-            "unpriced": [
-                {
-                    "address": entry.address,
-                    "type": entry.type,
-                    "reason": entry.reason.value,
-                }
-                for entry in cost.unpriced
-            ],
-        },
-        "drift": _drift_section(drift),
-        "policy": {
-            "rules": [
-                {"name": r.name, "result": r.result.value, "message": r.message}
-                for r in evaluate(policy, cost, drift, plan)
-            ]
-        },
-    }
-    click.echo(json.dumps(output, indent=2))
+    # Verdict (R18, R19).
+    results = evaluate(policy, cost, drift, plan)
+    verdict = combine(
+        summary,
+        cost,
+        drift,
+        results,
+        VerdictMeta(
+            tool_version=__version__,
+            pricing_snapshot_version=pricing.meta.version,
+            pricing_snapshot_date=pricing.meta.snapshot_date,
+            region=region,
+        ),
+    )
 
-    # R12: AWS read errors surface as exit 2 after the report is produced.
-    # (The R18 rule that a policy BLOCK's exit 1 takes precedence over this 2
-    # lands with the verdict logic in a later increment; no policy rules exist
-    # yet, so there is nothing to outrank.) The stderr notice carries only a
-    # count — never resource addresses or error text (attacker-influenced).
-    if drift.status is DriftStatus.RAN and drift.errors:
+    # Outputs (R19): files when requested; Markdown to stdout with no flags.
+    if out_json is not None:
+        try:
+            Path(out_json).write_text(render_json(verdict), encoding="utf-8")
+        except OSError:
+            _fail(f"{out_json}: cannot write JSON verdict file")
+    if out_md is not None:
+        try:
+            Path(out_md).write_text(render_md(verdict), encoding="utf-8")
+        except OSError:
+            _fail(f"{out_md}: cannot write Markdown report file")
+    if out_json is None and out_md is None:
+        click.echo(render_md(verdict), nl=False)
+
+    # R12: read failures still surface on stderr (count only — addresses and
+    # error text are attacker-influenced and live in the report instead).
+    errors = drift.status is DriftStatus.RAN and bool(drift.errors)
+    if errors:
         click.echo(
             f"spend-sentinel: error: {len(drift.errors)} resource(s) could not be "
             "read during drift detection (see drift.errors in the report)",
             err=True,
         )
-        sys.exit(2)
+
+    # Exit mapping (R18) with A5 precedence: BLOCK's 1 outranks the error 2.
+    code = exit_code(verdict, errors=errors, fail_on_warn=fail_on_warn)
+    if code != 0:
+        sys.exit(code)
 
 
 def _make_live_reader(region: str) -> AwsReader:
@@ -221,27 +231,6 @@ def _make_live_reader(region: str) -> AwsReader:
         return Boto3AwsReader(region=region)
     except Boto3NotInstalledError as exc:
         _fail(str(exc))
-
-
-def _drift_section(drift: DriftReport) -> dict[str, Any]:
-    """The JSON `drift` section (pre-R19 shape: status, drifts, skipped, errors)."""
-    return {
-        "status": drift.status.value,
-        "drifts": [
-            {
-                "address": d.address,
-                "kind": d.kind.value,
-                "attribute": d.attribute,
-                "state_value": d.state_value,
-                "live_value": d.live_value,
-            }
-            for d in drift.drifts
-        ],
-        "skipped": [
-            {"address": s.address, "type": s.type, "reason": s.reason} for s in drift.skipped
-        ],
-        "errors": [{"address": e.address, "error": e.error} for e in drift.errors],
-    }
 
 
 if __name__ == "__main__":

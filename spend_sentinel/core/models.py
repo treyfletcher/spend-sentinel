@@ -300,3 +300,38 @@ class RuleResult(BaseModel):
     name: str
     result: RuleOutcome
     message: str
+
+
+# --- Verdict (R18, R19) ---
+
+
+class VerdictStatus(StrEnum):
+    """Overall verdict: BLOCK > WARN > PASS (R18)."""
+
+    PASS = "PASS"
+    WARN = "WARN"
+    BLOCK = "BLOCK"
+
+
+class VerdictMeta(BaseModel):
+    """Provenance carried in the verdict (R19)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    tool_version: str
+    pricing_snapshot_version: str
+    pricing_snapshot_date: str
+    region: str
+
+
+class Verdict(BaseModel):
+    """The aggregate result rendered to JSON and Markdown (R19)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    verdict: VerdictStatus
+    summary: PlanSummary
+    cost: CostReport
+    drift: DriftReport
+    policy: tuple[RuleResult, ...]
+    meta: VerdictMeta

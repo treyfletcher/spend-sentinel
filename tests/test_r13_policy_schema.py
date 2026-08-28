@@ -110,6 +110,11 @@ class TestSchemaErrors:
                 "rules:\n  open_ingress:\n    allowed_ports: [80, http]\n",
                 "allowed_ports",
             ),
+            (  # wrong type: bool is not a port (pydantic lax mode would
+                # otherwise coerce true -> 1, silently exempting port 1)
+                "rules:\n  open_ingress:\n    allowed_ports: [true]\n",
+                "allowed_ports",
+            ),
             (  # wrong type: string where Decimal expected
                 "rules:\n  max_monthly_delta:\n    limit_usd: lots\n",
                 "limit_usd",

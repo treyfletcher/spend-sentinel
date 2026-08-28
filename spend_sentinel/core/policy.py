@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from spend_sentinel.core.models import (
     ActionClass,
@@ -63,6 +63,19 @@ class OpenIngressRule(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     allowed_ports: tuple[int, ...] = ()
+
+    @field_validator("allowed_ports", mode="before")
+    @classmethod
+    def _reject_bool_ports(cls, value: Any) -> Any:
+        """R13 wrong-type contract: YAML ``true``/``false`` are not port numbers.
+
+        pydantic's lax mode coerces bool -> int, which would silently turn a
+        truthy typo into "port 1 is exempt"; bools fail closed instead,
+        matching the estimator's bool-is-not-a-number convention (A-i8).
+        """
+        if isinstance(value, list | tuple) and any(isinstance(v, bool) for v in value):
+            raise ValueError("ports must be integers, not booleans")
+        return value
 
     @property
     def allowed(self) -> frozenset[int]:

@@ -1,6 +1,6 @@
 # Spec: spend-sentinel v1.1 — Live AWS Pricing API adapter
 
-Status: DRAFT
+Status: APPROVED — owner ratified A9, A11; delivery in 3 pipelined chunks (C1 foundation, C2 integration, C3 surface)
 Branch: feature/live-pricing
 
 ## Summary

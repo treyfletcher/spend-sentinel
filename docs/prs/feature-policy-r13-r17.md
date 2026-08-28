@@ -49,12 +49,11 @@ Exit codes are unchanged in this increment (informational until R18).
 
 ## Assumptions
 
-- **A-i21 (`limit_usd` default)**: R13 shows `limit_usd: 200` as an example
-  but names no default, and the built-in defaults must be safe rather than
-  presumptuous; `limit_usd` is therefore optional — when unset the rule
-  cannot block on the delta (message says "no limit configured") but the
-  `treat_unpriced_as` escalation still applies. If the owner intended a
-  default ceiling of $200, it is a one-line change.
+- **A-i21 (`limit_usd` default) — RESOLVED by owner**: `limit_usd` defaults
+  to **200 USD**. Built-in defaults and any policy file omitting the key get
+  a $200 ceiling; `treat_unpriced_as` escalation unchanged. (Originally
+  flagged because R13 showed 200 only as an example value; an explicit
+  `limit_usd: null` in a policy file still means "no ceiling".)
 - **A-i22 (R15 scope includes replaces)**: R15 says "created or updated"; a
   replaced SG also exists in the plan's `after` state, so create, update, and
   replace are inspected (only deletes and no-ops are exempt). Security-

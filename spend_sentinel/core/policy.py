@@ -45,11 +45,15 @@ _MAX_LISTED = 5  # addresses named in a rule message before "and N more"
 
 
 class MaxMonthlyDeltaRule(BaseModel):
-    """``rules.max_monthly_delta`` (R13, R14)."""
+    """``rules.max_monthly_delta`` (R13, R14).
+
+    ``limit_usd`` defaults to 200 USD (owner decision on A-i21): built-in
+    defaults and policy files omitting the key get a $200 ceiling.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    limit_usd: Decimal | None = None
+    limit_usd: Decimal | None = Decimal("200")
     treat_unpriced_as: Literal["warn", "ignore", "block"] = "warn"
 
 

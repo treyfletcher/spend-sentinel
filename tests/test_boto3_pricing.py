@@ -133,17 +133,9 @@ class TestConstructionAndEndpoint:
             make_client()
         assert excinfo.value.reason is LiveFailureReason.CLIENT_INIT_ERROR
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="BUG-5 (see docs/test-reports/feature-live-pricing-c1.md): the "
-        "endpoint-region regex is applied with re.match and a '$' anchor, which "
-        "matches before a trailing newline — 'eu-west-1\\n' passes validation and "
-        "is handed to boto3, violating R31's validate-before-boto3 contract "
-        "(fix: re.fullmatch or a \\Z anchor)",
-    )
     def test_r31_trailing_newline_endpoint_rejected(self, stub_boto3, monkeypatch):
-        """Deterministic proof via the stub: the newline value must be rejected,
-        never handed to boto3.client as region_name."""
+        """BUG-5 (c1 report) fixed in chunk 3: a trailing-newline region is
+        rejected before boto3 ever sees it (regression pin)."""
         from spend_sentinel.adapters.boto3_pricing import PricingClientUnavailable
 
         monkeypatch.setenv(ENV_VAR, "eu-west-1\n")

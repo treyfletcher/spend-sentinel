@@ -432,8 +432,13 @@ class TestAc20HostileResponsesThroughCli:
 
 
 class TestRendererEscaping:
-    def test_r30_hostile_publication_dates_escaped_in_markdown(self, runner,
-                                                               monkeypatch):
+    def test_r30_hostile_publication_dates_never_reach_markdown(self, runner,
+                                                                monkeypatch):
+        """A non-ISO publicationDate is dropped at extraction (R31 review
+        hardening), so a hostile date reaches the report in NO form — neither
+        raw nor escaped — and the summary omits the publication clause while
+        the rates stay live. (The renderer still escapes valid-shaped dates
+        as defense in depth.)"""
         hostile_date = "2026|08`<b>injected</b>"
         client = FixturePricingClient()
         add(client, "aws_instance", "t3.micro",
@@ -446,8 +451,10 @@ class TestRendererEscaping:
             "--live-pricing",
         )
         md = result.stdout
-        assert hostile_date not in md  # raw form never appears
-        assert "&#124;" in md and "&#96;" in md and "&lt;b&gt;" in md
+        assert hostile_date not in md          # raw form never appears
+        assert "injected" not in md            # nor any escaped fragment
+        assert "prices published" not in md    # no dates -> clause omitted
+        assert "Pricing: live (2 live)" in md  # both rates still live
         # still exactly one verdict header line
         assert [ln for ln in md.splitlines() if ln.startswith("Verdict:")] == [
             "Verdict: PASS"

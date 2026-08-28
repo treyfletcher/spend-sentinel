@@ -249,6 +249,33 @@ class TestExtractionValidR31:
         live = extract_rate(load_pages("nlb_useast1_with_lcu.json"), rule)
         assert live.rate == Decimal("0.0230000000")
 
+    @pytest.mark.parametrize(
+        "bad_date",
+        [
+            "9999-12-31T" + "A" * 100_000,      # unbounded hostile string
+            "2026-08-20T00:00:00Z|`<script>`",  # markup smuggled via the date
+            "not a date",
+            "2026-08-20",                       # missing time component
+            "",
+        ],
+    )
+    def test_r31_invalid_publication_date_dropped_rate_still_accepted(self, bad_date):
+        """publicationDate is the only response string besides the rate that
+        reaches any output (R31): a non-ISO-8601 value is dropped, bounding
+        what a hostile response can push into the report; the key still
+        prices (the date is informational, never worth failing the key)."""
+        entry = price_entry([{"unit": "Hrs", "usd": "0.05"}], publication=bad_date)
+        live = extract_rate(pages_of(entry), HRS)
+        assert live.rate == Decimal("0.05")
+        assert live.publication_dates == ()
+
+    def test_r31_valid_iso_publication_dates_kept(self):
+        for good in ("2026-08-20T00:00:00Z", "2026-08-20T00:00:00.000Z",
+                     "2026-08-20T23:59:59"):
+            entry = price_entry([{"unit": "Hrs", "usd": "0.05"}], publication=good)
+            live = extract_rate(pages_of(entry), HRS)
+            assert live.publication_dates == (good,)
+
     def test_a_c4_unit_mismatch_yields_no_match(self):
         """A-c4: a spurious OnDemand dimension with the wrong unit must not be
         priced as if it were hourly."""

@@ -21,6 +21,7 @@ rate and ``publicationDate`` strings.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -298,6 +299,15 @@ class ExtractionError(Exception):
         self.reason = reason
 
 
+#: publicationDate is the ONLY response string besides the rate that reaches
+#: any output (R31), so it is validated to the API's ISO-8601 shape before
+#: leaving this module; anything else is dropped (the date is informational —
+#: a bad one never fails the key). Bounds the channel a hostile response
+#: could otherwise use to bloat the report (a 256 KiB "date" is escaped
+#: downstream but would still blow the R20 size budget).
+_PUBLICATION_DATE = re.compile(r"\d{4}-\d{2}-\d{2}T[0-9:.]{1,18}Z?")
+
+
 @dataclass(frozen=True)
 class LiveRate:
     """A successfully extracted live rate plus its price-list publication dates."""
@@ -334,7 +344,7 @@ def extract_rate(pages: list[dict[str, Any]], rule: DimensionRule) -> LiveRate:
             if products_seen > MAX_PRODUCTS_PER_KEY:
                 raise ExtractionError(LiveFailureReason.OVERSIZE_RESPONSE)
             entry = _parse_entry(raw_entry)
-            if entry.publicationDate:
+            if _PUBLICATION_DATE.fullmatch(entry.publicationDate):
                 dates.add(entry.publicationDate)
             product_usagetype = entry.product.attributes.get("usagetype")
             for term in entry.terms.OnDemand.values():
@@ -485,7 +495,7 @@ def resolve_live_rate(
         return LookupOutcome(failure=exc.reason)
     except PricingApiError as exc:
         return LookupOutcome(failure=exc.reason)
-    except Exception:  # noqa: BLE001 - BUG-6 defensive catch-all
+    except Exception:  # BUG-6 defensive catch-all
         # A transport that violates the protocol by raising an untyped
         # exception must degrade like any other failure, never crash the run
         # (R27; mirrors drift's A-i18 posture). No exception detail is kept —

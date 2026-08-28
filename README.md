@@ -72,6 +72,36 @@ tool picks up `spend-sentinel.yaml` from the current working directory when
 present, so the effective policy would depend on the checkout/invocation
 directory (and in PR workflows a branch could carry its own file).
 
+## Live pricing (opt-in, v1.1)
+
+`--live-pricing` resolves on-demand rates from the AWS Pricing API
+(`pricing:GetProducts`) instead of the bundled snapshot, with **per-key
+fallback to the snapshot on any failure** — no boto3, no credentials, API
+errors, timeouts, an exhausted 30-second budget, unmatched or ambiguous
+responses all degrade to the snapshot rate for the affected key(s), emit a
+one-line stderr warning per distinct reason, and **never change the run's
+exit code**. Freshness only, not coverage: the resolved region must still be
+in the snapshot (the guaranteed fallback), so region rules are unchanged.
+
+```bash
+pip install ".[aws]"
+spend-sentinel analyze --plan plan.json --skip-drift --live-pricing
+```
+
+- Which source priced each resource shows up as `price_source`
+  (`live`/`snapshot`/`mixed`) per breakdown entry, a `Source` column in the
+  Markdown cost table, and a `Pricing:` summary line; run-level detail
+  (status, lookup counts, price publication dates, degradation reasons)
+  lives in the JSON verdict's `meta.live_pricing`
+  (see [`docs/verdict-schema.md`](docs/verdict-schema.md)).
+- IAM: only `pricing:GetProducts`, shipped separately as
+  [`docs/iam-policy-pricing.json`](docs/iam-policy-pricing.json) — attach it
+  only where `--live-pricing` is used; the drift policy is unchanged.
+- Endpoint: the Pricing API is served from `us-east-1` (default) and
+  `ap-south-1`; set `SPEND_SENTINEL_PRICING_ENDPOINT_REGION` to override.
+  The endpoint region is independent of the region being priced.
+- Without the flag, behavior and output bytes are identical to v1.
+
 ## Pricing: what is (and is not) covered
 
 Prices come from a bundled, versioned snapshot

@@ -26,9 +26,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from spend_sentinel.pricing.source import PricingSource
+
+if TYPE_CHECKING:
+    from spend_sentinel.core.models import LivePricingReport
 
 # --- Bounds (R28, R31) ------------------------------------------------------
 
@@ -506,3 +511,132 @@ def cached_resolve(
         outcome = resolve_live_rate(client, region, service_key, price_key)
     cache.put(region, service_key, price_key, outcome)
     return outcome
+
+
+# --- LivePricingSource (T12: R24, R27, R28, R29) ------------------------------
+
+
+class LivePricingSource:
+    """A :class:`~spend_sentinel.pricing.source.PricingSource` with live rates.
+
+    Wraps an injected :class:`PricingApiClient` and the v1
+    ``SnapshotPricingSource`` fallback (R24). Per-key resolution: run
+    disabled or key unmappable -> snapshot; else one cached API query; any
+    failure -> snapshot; ``None`` only when both miss (flows into R7
+    ``unknown_price_key`` unchanged). Degradation is total: ``get_rate``
+    never raises, and run-level failures (``boto3_missing``,
+    ``client_init_error``, ``unsupported_region``) switch the rest of the
+    run to snapshot-only after being recorded once (R27).
+
+    Construct with ``client=None`` plus ``disabled_reason`` when the
+    transport could not be built (chunk-3 wiring), so reporting still works.
+    """
+
+    def __init__(
+        self,
+        client: PricingApiClient | None,
+        snapshot: PricingSource,
+        endpoint_region: str = "us-east-1",
+        budget_seconds: float = BUDGET_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+        disabled_reason: LiveFailureReason | None = None,
+    ) -> None:
+        if client is None and disabled_reason is None:
+            disabled_reason = LiveFailureReason.CLIENT_INIT_ERROR
+        self._client = client
+        self._snapshot = snapshot
+        self._endpoint_region = endpoint_region
+        self._cache = RunCache()
+        self._budget = Budget(seconds=budget_seconds, clock=clock)
+        self._disabled: LiveFailureReason | None = None
+        self._warnings: dict[tuple[str, str], None] = {}  # ordered de-dup
+        self._pending_lookups: list[tuple[str, str, str]] = []
+        self._live_count = 0
+        self._fallback_count = 0
+        self._miss_count = 0
+        self._publication_dates: set[str] = set()
+        if disabled_reason is not None:
+            self._disable(disabled_reason)
+
+    # -- PricingSource protocol --
+
+    def get_rate(self, region: str, service_key: str, price_key: str) -> Decimal | None:
+        """Resolve one rate per R24; records attribution and never raises."""
+        if self._disabled is None and region not in REGION_LOCATIONS:
+            self._disable(LiveFailureReason.UNSUPPORTED_REGION)
+
+        if self._disabled is None and self._client is not None:
+            outcome = cached_resolve(
+                self._client, self._cache, self._budget, region, service_key, price_key
+            )
+            if outcome.ok:
+                self._live_count += 1
+                self._publication_dates.update(outcome.publication_dates)
+                self._pending_lookups.append((service_key, price_key, "live"))
+                return outcome.rate
+            failure = outcome.failure or LiveFailureReason.API_ERROR
+            self._warn(failure, f"{service_key}/{price_key}")
+            if failure in RUN_LEVEL_REASONS:  # defensive: normally pre-checked
+                self._disable(failure)
+
+        rate = self._snapshot.get_rate(region, service_key, price_key)
+        self._pending_lookups.append((service_key, price_key, "snapshot"))
+        if rate is None:
+            self._miss_count += 1
+        else:
+            self._fallback_count += 1
+        return rate
+
+    # -- attribution (R29) --
+
+    def drain_lookups(self) -> list[tuple[str, str, str]]:
+        """(service_key, price_key, source) since the last drain; clears them."""
+        drained = self._pending_lookups
+        self._pending_lookups = []
+        return drained
+
+    # -- reporting (R27/R30, consumed by chunk 3) --
+
+    def report(self) -> LivePricingReport:
+        """The verdict-meta ``live_pricing`` object for this run."""
+        from spend_sentinel.core.models import (
+            LivePricingReport,
+            LivePricingStatus,
+            LivePricingWarning,
+        )
+
+        if self._disabled is not None:
+            status = LivePricingStatus.UNAVAILABLE
+        elif self._warnings or self._fallback_count or self._miss_count:
+            status = LivePricingStatus.DEGRADED
+        else:
+            status = LivePricingStatus.OK
+
+        dates: tuple[str, str] | None = None
+        if self._publication_dates:
+            ordered = sorted(self._publication_dates)
+            dates = (ordered[0], ordered[-1])
+
+        return LivePricingReport(
+            requested=True,
+            status=status,
+            endpoint_region=self._endpoint_region,
+            lookups_live=self._live_count,
+            lookups_snapshot_fallback=self._fallback_count,
+            lookups_miss=self._miss_count,
+            publication_dates=dates,
+            warnings=tuple(
+                LivePricingWarning(reason=reason, detail=detail)
+                for reason, detail in self._warnings
+            ),
+        )
+
+    # -- internals --
+
+    def _disable(self, reason: LiveFailureReason) -> None:
+        if self._disabled is None:
+            self._disabled = reason
+            self._warn(reason, "")
+
+    def _warn(self, reason: LiveFailureReason, detail: str) -> None:
+        self._warnings.setdefault((reason.value, detail))

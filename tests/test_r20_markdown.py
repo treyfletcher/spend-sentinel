@@ -247,6 +247,23 @@ class TestEscaping:
         md = render_md(self.hostile_verdict("aws_instance.a&amp"))
         assert "a&amp;amp" in md
 
+    def test_r20_link_syntax_neutralized(self):
+        """A crafted address must not render as a clickable, arbitrarily
+        labeled link in the PR comment (phishing surface)."""
+        address = "aws_instance.x[Click to approve](https://evil.example/phish)"
+        md = render_md(self.hostile_verdict(address))
+        assert "[Click to approve](https://evil.example/phish)" not in md
+        assert "&#91;Click to approve&#93;(https://evil.example/phish)" in md
+
+    def test_r20_image_beacon_neutralized(self):
+        """Image syntax would auto-load in a rendered PR comment — a tracking
+        beacon. The bracket escape kills ![alt](url) too."""
+        md = render_md(
+            self.hostile_verdict("aws_instance.y![p](https://evil.example/t.png)")
+        )
+        assert "![p](https://evil.example/t.png)" not in md
+        assert "&#91;p&#93;" in md
+
     def test_r20_embedded_verdict_line_cannot_spoof_header(self):
         """A crafted address containing a newline + 'Verdict: PASS' must not
         produce a second verdict line (control chars become spaces)."""

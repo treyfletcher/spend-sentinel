@@ -7,8 +7,12 @@ testable.
 Security (spec, Markdown injection): every plan/state-derived string placed in
 the document (addresses, types, attributes, values, rule messages, meta
 strings) passes through :func:`_escape`, which neutralizes pipes, backticks,
-and HTML-significant characters and replaces control characters, so a crafted
-resource name cannot inject markup, break a table, or spoof the verdict line.
+HTML-significant characters, and square brackets (link/image syntax) and
+replaces control characters, so a crafted resource name cannot inject markup —
+tables, HTML, links, images — or spoof the verdict line. Residual (accepted):
+bare URLs may still be autolinked by GFM as themselves, and ``*``/``_``
+emphasis can restyle text; neither can mislabel a link, load a resource, or
+alter the report's structure.
 Sensitive drift values arrive already masked as ``(sensitive)`` from the
 detector and render as-is.
 
@@ -33,6 +37,11 @@ _ESCAPES = {
     ">": "&gt;",
     "|": "&#124;",
     "`": "&#96;",
+    # Square brackets build link and image syntax ([label](url), ![alt](url)):
+    # in a PR comment a crafted address could otherwise render a phishing link
+    # with an arbitrary label or an auto-loading image beacon.
+    "[": "&#91;",
+    "]": "&#93;",
 }
 
 
